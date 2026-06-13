@@ -39,8 +39,11 @@ async function runActorJson(
 ): Promise<Record<string, unknown>[]> {
   const token = process.env.APIFY_TOKEN;
   if (!token) throw new Error('APIFY_TOKEN not set');
+  // Apify's URL path uses the tilde form (owner~actor-name). Accept the slash
+  // form shown on the store page and normalize it.
+  const actorPath = actorId.trim().replace(/^https?:\/\/.*\/acts\//, '').replace(/\//g, '~');
   const endpoint =
-    `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
+    `https://api.apify.com/v2/acts/${actorPath}/run-sync-get-dataset-items` +
     `?token=${encodeURIComponent(token)}&timeout=${Math.floor(timeoutMs / 1000)}`;
   const res = await fetch(endpoint, {
     method: 'POST',
