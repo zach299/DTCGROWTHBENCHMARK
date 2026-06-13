@@ -16,16 +16,36 @@ const removeSchema = z.object({
   list_name: z.enum(LISTS),
 });
 
-// GET — list all watchlist items (client groups them by list).
+// GET — list all watchlist items, each enriched with its latest snapshot
+// metrics (growth score / momentum / ad counts) so the MCP server can answer
+// "which saved companies are accelerating / above 90 / gaining ad activity".
 export async function GET() {
   const supabase = createServiceClient();
   try {
-    const { data, error } = await supabase
+    const { data: items, error } = await supabase
       .from('watchlist_items')
       .select('*')
       .order('added_at', { ascending: false });
     if (error) throw error;
-    return NextResponse.json({ items: data ?? [], lists: LISTS });
+    const list = items ?? [];
+
+    const domains = [...new Set(list.map((i) => i.domain))];
+    const latest = new Map<string, Record<string, unknown>>();
+    if (domains.length) {
+      const { data: snaps } = await supabase
+        .from('domain_snapshots')
+        .select(
+          'domain, snapshot_date, growth_score, growth_momentum, active_meta_ads, active_google_ads, active_linkedin_ads, revenue_range'
+        )
+        .in('domain', domains)
+        .order('snapshot_date', { ascending: false });
+      for (const s of snaps ?? []) {
+        if (!latest.has(s.domain)) latest.set(s.domain, s); // first = most recent
+      }
+    }
+
+    const enriched = list.map((it) => ({ ...it, latest: latest.get(it.domain) ?? null }));
+    return NextResponse.json({ items: enriched, lists: LISTS });
   } catch (err) {
     logger.error('watchlist GET failed', {
       error: err instanceof Error ? err.message : String(err),

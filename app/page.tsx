@@ -544,6 +544,14 @@ export default function Home() {
   const lensAngle = briefInput ? lensObj.angle(briefInput) : result?.recommended_angle;
   const lensHook = briefInput ? lensObj.hook(briefInput) : result?.outbound_hook;
 
+  // Deep-link: /?domain=ridge.com auto-runs (used by the Chrome extension's
+  // "Open Full Report").
+  useEffect(() => {
+    const d = new URLSearchParams(window.location.search).get('domain');
+    if (d) runAnalyze(d.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function saveCompany(list_name: string) {
     if (!result) return;
     setSaveOpen(false);

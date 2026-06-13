@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; max-width: 460px; color: #0f172a; }
+      h1 { font-size: 18px; }
+      label { display: block; font-size: 13px; color: #64748b; margin: 16px 0 6px; }
+      input { width: 100%; padding: 9px 11px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; }
+      button { margin-top: 16px; padding: 9px 16px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+      .saved { color: #16a34a; font-size: 13px; margin-left: 10px; }
+      p { font-size: 12px; color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <h1>⚡ Growth Signals — Settings</h1>
+    <label for="apiBase">API URL</label>
+    <input id="apiBase" type="text" placeholder="https://your-deployment.vercel.app" />
+    <p>Point this at your deployed Growth Signals app (the Vercel production URL).</p>
+    <div><button id="save">Save</button><span id="status" class="saved"></span></div>
+    <script src="options.js"></script>
+  </body>
+</html>

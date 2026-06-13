@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand"><span class="logo">⚡</span> Growth Signals</div>
+        <a id="settings" class="settings" title="Settings">⚙</a>
+      </header>
+
+      <div class="searchbar">
+        <input id="domain" type="text" placeholder="company.com" autocomplete="off" spellcheck="false" />
+        <button id="analyze">Analyze</button>
+      </div>
+
+      <div id="status" class="status hidden"></div>
+      <div id="result" class="result hidden"></div>
+
+      <div id="actions" class="actions hidden">
+        <button id="open-report" class="btn">Open Full Report</button>
+        <button id="save" class="btn">☆ Save Company</button>
+        <div class="add-wrap">
+          <button id="add-watchlist" class="btn">+ Watchlist</button>
+          <div id="lists" class="lists hidden"></div>
+        </div>
+        <button id="brief" class="btn primary">✦ Research Brief</button>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

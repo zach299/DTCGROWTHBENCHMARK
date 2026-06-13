@@ -1,0 +1,12 @@
+{
+  "name": "growth-signals-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Growth Signals — query company growth intelligence, watchlists, and top movers from Claude.",
+  "type": "module",
+  "bin": { "growth-signals-mcp": "index.mjs" },
+  "scripts": { "start": "node index.mjs" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  }
+}

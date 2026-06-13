@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Growth Signals",
+  "version": "1.0.0",
+  "description": "Instant GTM intelligence for any company you're viewing — growth score, momentum, ad activity, and a research brief.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Growth Signals"
+  },
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "options_page": "options.html"
+}
