@@ -169,6 +169,17 @@ export async function fetchMetaAdsSignals(
   let scopedItems: Item[];
   let advertiserFallback: string | null = null;
 
+  const emptySignals = (): MetaAdsSignals => ({
+    advertiser_name: null,
+    active_ads_count: 0,
+    unique_landing_pages: [],
+    sample_ad_copy: [],
+    sample_creatives: [],
+    first_seen_date: null,
+    platforms: [],
+    raw: [],
+  });
+
   const best = [...pageIdVotes.entries()].sort((a, b) => b[1].votes - a[1].votes)[0];
   if (best) {
     const [pageId, { name }] = best;
@@ -177,12 +188,17 @@ export async function fetchMetaAdsSignals(
     const pageUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&view_all_page_id=${pageId}&search_type=page`;
     logger.info('Apify Meta Ads: page-scoped query', { pageId, name });
     scopedItems = await runActor(pageUrl, 20);
-    if (scopedItems.length === 0) scopedItems = searchItems;
+    // If the page query returns nothing, the brand simply has no active ads —
+    // do NOT fall back to the contaminated keyword results (their `total` is the
+    // global keyword count, e.g. ~50k for a common word like "nothing").
+    if (scopedItems.length === 0) return emptySignals();
   } else {
-    // Could not identify the brand's page among search results; fall back to
-    // the raw keyword results (may include unrelated advertisers).
-    logger.warn('Apify Meta Ads: no page_id match, using keyword results', { pageName });
-    scopedItems = searchItems;
+    // Could not confidently identify the brand's own page (common for generic /
+    // common-word brand names searched without a facebook_url). Returning the
+    // raw keyword results would report a random advertiser and the global
+    // keyword total, so return empty instead.
+    logger.warn('Apify Meta Ads: no confident page_id match — returning empty', { pageName });
+    return emptySignals();
   }
 
   // --- Map fields (defensive across plausible field names) ---
