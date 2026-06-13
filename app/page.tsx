@@ -2,216 +2,178 @@
 
 import { useState } from 'react';
 
-interface ScoreResult {
+interface AnalysisResult {
   domain: string;
-  growth_score?: number;
-  paid_media_signal?: string;
-  social_signal?: string;
-  hiring_signal?: string;
-  site_signal?: string;
-  signals?: string[];
-  summary?: string;
-  recommended_buyer?: string;
-  recommended_angle?: string;
-  outbound_hook?: string;
-  last_updated?: string;
-  status?: string;
-  message?: string;
-  error?: string;
+  growth_score: number;
+  northbeam_fit_score: number;
+  paid_media_signal: string;
+  recommended_buyer: string;
+  recommended_angle: string;
+  outbound_hook: string;
+  reasons: string[];
+  cached: boolean;
+  company?: Record<string, unknown>;
 }
 
-function SignalBadge({ label, value }: { label: string; value?: string }) {
-  const color =
-    value === 'high'
-      ? 'bg-green-100 text-green-800'
-      : value === 'medium'
-      ? 'bg-yellow-100 text-yellow-800'
-      : value === 'low'
-      ? 'bg-red-100 text-red-800'
-      : 'bg-gray-100 text-gray-600';
+function scoreColor(score: number): string {
+  if (score >= 70) return 'text-green-600';
+  if (score >= 40) return 'text-yellow-600';
+  return 'text-red-600';
+}
 
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {label}: {value ?? 'unknown'}
-    </span>
-  );
+function signalBadge(signal: string): string {
+  if (signal === 'high') return 'bg-green-100 text-green-800';
+  if (signal === 'medium') return 'bg-yellow-100 text-yellow-800';
+  return 'bg-red-100 text-red-800';
 }
 
 export default function Home() {
   const [domain, setDomain] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ScoreResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function analyze(e: React.FormEvent) {
     e.preventDefault();
-    if (!domain.trim()) return;
-
+    if (!domain.trim() || loading) return;
     setLoading(true);
+    setError(null);
     setResult(null);
     setShowRaw(false);
-
     try {
-      const res = await fetch('/api/v1/analyze-domain', {
+      const res = await fetch('/api/analyze-domain', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain: domain.trim() }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setError(
+          res.status === 404
+            ? `"${data.domain ?? domain}" was not found in the database.`
+            : data.error || 'Something went wrong.'
+        );
+        return;
+      }
       setResult(data);
-    } catch (err) {
-      setResult({ domain, error: String(err) });
+    } catch {
+      setError('Network error — please try again.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Growth Signals</h1>
-          <p className="text-gray-500">Ecommerce brand GTM intelligence</p>
-        </div>
+    <main className="min-h-screen bg-gray-50 py-12 px-4">
+      <div className="mx-auto max-w-3xl">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Growth Signals</h1>
+        <p className="text-gray-500 mb-8">
+          Analyze a DTC brand&apos;s growth potential from its domain.
+        </p>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 mb-8">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Domain</label>
-              <input
-                type="text"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="ridge.com"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="gsa_..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading || !domain.trim()}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? 'Analyzing...' : 'Analyze Domain'}
-            </button>
-          </div>
+        <form onSubmit={analyze} className="flex gap-3 mb-8">
+          <input
+            type="text"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder="ridge.com"
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            disabled={loading || !domain.trim()}
+            className="rounded-lg bg-blue-600 px-6 py-2.5 font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Analyzing…' : 'Analyze'}
+          </button>
         </form>
 
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            {error}
+          </div>
+        )}
+
         {result && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-            {result.error ? (
-              <div className="text-red-600">Error: {result.error}</div>
-            ) : result.status === 'queued' || result.status === 'no_data' ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-4">⏳</div>
-                <p className="text-gray-600">{result.message}</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">{result.domain}</h2>
-                    {result.last_updated && (
-                      <p className="text-sm text-gray-400 mt-1">
-                        Updated {new Date(result.last_updated).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                  {result.growth_score !== undefined && result.growth_score !== null && (
-                    <div className="text-center">
-                      <div
-                        className={`text-5xl font-bold ${
-                          result.growth_score >= 70
-                            ? 'text-green-600'
-                            : result.growth_score >= 40
-                            ? 'text-yellow-600'
-                            : 'text-red-600'
-                        }`}
-                      >
-                        {result.growth_score}
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">Growth Score</div>
-                    </div>
-                  )}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">{result.domain}</h2>
+              {result.cached && (
+                <span className="rounded-full bg-gray-200 px-3 py-1 text-xs font-medium text-gray-600">
+                  cached
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="text-sm text-gray-500 mb-1">Growth Score</div>
+                <div className={`text-5xl font-bold ${scoreColor(result.growth_score)}`}>
+                  {result.growth_score}
                 </div>
-
-                {(result.paid_media_signal || result.social_signal || result.hiring_signal || result.site_signal) && (
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    <SignalBadge label="Paid Media" value={result.paid_media_signal} />
-                    <SignalBadge label="Social" value={result.social_signal} />
-                    <SignalBadge label="Hiring" value={result.hiring_signal} />
-                    <SignalBadge label="Site" value={result.site_signal} />
-                  </div>
-                )}
-
-                {result.summary && (
-                  <p className="text-gray-700 mb-6 leading-relaxed">{result.summary}</p>
-                )}
-
-                {result.signals && result.signals.length > 0 && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Key Signals</h3>
-                    <ul className="space-y-2">
-                      {result.signals.map((s, i) => (
-                        <li key={i} className="flex items-start gap-2 text-gray-700">
-                          <span className="text-blue-500 mt-0.5">→</span>
-                          {s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {result.recommended_buyer && (
-                  <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                    <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">Recommended Buyer</div>
-                    <div className="text-gray-900 font-medium">{result.recommended_buyer}</div>
-                  </div>
-                )}
-
-                {result.recommended_angle && (
-                  <div className="bg-purple-50 rounded-lg p-4 mb-4">
-                    <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-1">Recommended Angle</div>
-                    <div className="text-gray-900">{result.recommended_angle}</div>
-                  </div>
-                )}
-
-                {result.outbound_hook && (
-                  <div className="bg-green-50 rounded-lg p-4 mb-6 border-l-4 border-green-400">
-                    <div className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-1">Outbound Hook</div>
-                    <div className="text-gray-900 italic">&quot;{result.outbound_hook}&quot;</div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => setShowRaw(!showRaw)}
-                  className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="text-sm text-gray-500 mb-1">Northbeam Fit</div>
+                <div className={`text-5xl font-bold ${scoreColor(result.northbeam_fit_score)}`}>
+                  {result.northbeam_fit_score}
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="text-sm text-gray-500 mb-2">Paid Media Signal</div>
+                <span
+                  className={`inline-block rounded-full px-3 py-1 text-sm font-semibold uppercase ${signalBadge(result.paid_media_signal)}`}
                 >
-                  {showRaw ? 'Hide' : 'Show'} raw JSON
-                </button>
-                {showRaw && (
-                  <pre className="mt-4 bg-gray-900 text-green-400 rounded-lg p-4 overflow-auto text-xs">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                )}
-              </>
+                  {result.paid_media_signal}
+                </span>
+              </div>
+            </div>
+
+            {Array.isArray(result.reasons) && result.reasons.length > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Reasons</h3>
+                <ul className="space-y-2">
+                  {result.reasons.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2 text-gray-700">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
+
+            <div className="grid grid-cols-1 gap-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Recommended Buyer</h3>
+                <p className="text-gray-900">{result.recommended_buyer}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Recommended Angle</h3>
+                <p className="text-gray-900">{result.recommended_angle}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-1">Outbound Hook</h3>
+                <p className="text-gray-900">{result.outbound_hook}</p>
+              </div>
+            </div>
+
+            <div>
+              <button
+                onClick={() => setShowRaw((s) => !s)}
+                className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              >
+                {showRaw ? 'Hide raw JSON' : 'Show raw JSON'}
+              </button>
+              {showRaw && (
+                <pre className="mt-3 overflow-x-auto rounded-xl bg-gray-900 p-4 text-xs text-gray-100">
+                  {JSON.stringify(result, null, 2)}
+                </pre>
+              )}
+            </div>
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }

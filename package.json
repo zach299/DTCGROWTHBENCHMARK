@@ -6,31 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "db:migrate": "psql $DATABASE_URL -f supabase/migrations/001_initial_schema.sql",
-    "import:storeleads": "tsx scripts/import-storeleads-csv.ts",
-    "worker:jobs": "tsx scripts/workers/process-enrichment-jobs.ts",
-    "create-api-key": "tsx scripts/create-api-key.ts"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
-    "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/papaparse": "^5.5.2",
-    "@types/pg": "^8.20.0",
-    "@types/uuid": "^10.0.0",
-    "bcryptjs": "^3.0.3",
-    "csv-parse": "^6.2.1",
-    "dotenv": "^17.4.2",
-    "fast-csv": "^5.0.7",
     "next": "16.2.9",
-    "papaparse": "^5.5.3",
-    "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "tsx": "^4.22.4",
-    "uuid": "^14.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
