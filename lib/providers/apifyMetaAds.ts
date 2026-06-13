@@ -96,7 +96,8 @@ export async function fetchMetaAdsSignals(facebookUrl: string): Promise<MetaAdsS
 
   const endpoint =
     `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
-    `?token=${encodeURIComponent(token)}&timeout=120&memory=1024`;
+    // This actor requires <= 512MB per input URL.
+    `?token=${encodeURIComponent(token)}&timeout=120&memory=512`;
 
   logger.info('Fetching Meta Ads signals via Apify', { actorId, pageName });
 
@@ -113,7 +114,15 @@ export async function fetchMetaAdsSignals(facebookUrl: string): Promise<MetaAdsS
   }
 
   const items = (await res.json()) as unknown;
-  const list: Item[] = Array.isArray(items) ? (items as Item[]) : [];
+  const allItems: Item[] = Array.isArray(items) ? (items as Item[]) : [];
+
+  // The actor reports failures as dataset items like { "error": "..." }.
+  // Never count those as ads; if that's all we got, treat the run as failed.
+  const errorItems = allItems.filter((i) => typeof i.error === 'string');
+  const list = allItems.filter((i) => typeof i.error !== 'string');
+  if (list.length === 0 && errorItems.length > 0) {
+    throw new Error(`Apify actor error: ${String(errorItems[0].error).slice(0, 300)}`);
+  }
 
   // --- Defensive mapping over plausible field names ---
   let advertiserName: string | null = null;
