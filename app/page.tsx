@@ -498,11 +498,25 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+type MoverTab = 'fastest' | 'meta' | 'google' | 'linkedin' | 'new' | 'top1' | 'category';
+const MOVER_TABS: { key: MoverTab; label: string }[] = [
+  { key: 'fastest', label: 'Fastest Growing' },
+  { key: 'meta', label: 'Top Meta' },
+  { key: 'google', label: 'Top Google' },
+  { key: 'linkedin', label: 'Top LinkedIn' },
+  { key: 'new', label: 'Newly Enriched' },
+  { key: 'top1', label: 'Entering Top 1%' },
+  { key: 'category', label: 'By Category' },
+];
+
 function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
   const [movers, setMovers] = useState<Mover[]>([]);
+  const [segments, setSegments] = useState<Record<string, Mover[]>>({});
+  const [categories, setCategories] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [sort, setSort] = useState<'rank' | 'ads'>('rank');
+  const [tab, setTab] = useState<MoverTab>('fastest');
+  const [cat, setCat] = useState<string>('');
 
   useEffect(() => {
     (async () => {
@@ -510,7 +524,10 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
         const r = await fetch('/api/top-movers');
         const d = await r.json();
         setMovers(d.movers ?? []);
+        setSegments(d.segments ?? {});
+        setCategories(d.categories ?? []);
         setTotal(d.total ?? 0);
+        if ((d.categories ?? []).length) setCat(d.categories[0]);
       } catch {
         setMovers([]);
       } finally {
@@ -519,34 +536,56 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
     })();
   }, []);
 
-  const sorted = [...movers].sort((a, b) =>
-    sort === 'ads' ? b.active_meta_ads - a.active_meta_ads : a.rank - b.rank
-  );
+  // The list to show depends on the active tab/segment.
+  const sorted: Mover[] =
+    tab === 'meta' ? segments.top_meta ?? []
+    : tab === 'google' ? segments.top_google ?? []
+    : tab === 'linkedin' ? segments.top_linkedin ?? []
+    : tab === 'new' ? segments.newly_enriched ?? []
+    : tab === 'top1' ? segments.entering_top_1 ?? []
+    : tab === 'category' ? movers.filter((m) => m.primary_category === cat)
+    : movers;
+
+  const subtitle =
+    tab === 'meta' ? 'Top Meta advertisers by active ad volume'
+    : tab === 'google' ? 'Top Google advertisers'
+    : tab === 'linkedin' ? 'Top LinkedIn advertisers'
+    : tab === 'new' ? 'Most recently enriched companies'
+    : tab === 'top1' ? 'Companies in the Top 1% of growth'
+    : tab === 'category' ? `Top ${cat} brands by growth`
+    : `${total.toLocaleString()} companies tracked · ranked by Growth Score`;
 
   const brand = (m: Mover) => m.company_name || m.domain.replace(/^www\./, '').split('.')[0];
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fastest Growing Brands</h1>
-          <p className="text-sm text-gray-500">
-            {total.toLocaleString()} companies tracked · ranked by live Meta ad activity
-          </p>
-        </div>
-        <div className="flex gap-1 text-xs">
-          {(['rank', 'ads'] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setSort(k)}
-              className={`rounded-md px-3 py-1.5 font-medium ${
-                sort === k ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'
-              }`}
-            >
-              {k === 'rank' ? 'Growth Rank' : 'Meta Ads'}
-            </button>
-          ))}
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Top Movers</h1>
+        <p className="text-sm text-gray-500">{subtitle}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {MOVER_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-md px-3 py-1.5 font-medium ${
+              tab === t.key ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+        {tab === 'category' && categories.length > 0 && (
+          <select
+            value={cat}
+            onChange={(e) => setCat(e.target.value)}
+            className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
+          >
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {loading ? (
