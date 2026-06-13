@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
+import { fetchMetaAdsSignals, type MetaAdsSignals } from '@/lib/providers/apifyMetaAds';
+
+// Apify run-sync can take up to ~2 minutes; allow generous function duration.
+// Note: Vercel hobby plan caps maxDuration lower (60s) — this takes effect on Pro+.
+export const maxDuration = 300;
 
 const bodySchema = z.object({
   domain: z.string().min(1),
@@ -35,78 +40,127 @@ function clamp(n: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
-// TODO: replace placeholder scoring with Claude + enrichment signals
-function placeholderScore(company: MasterRow) {
+function formatMoney(n: number): string {
+  return n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1_000)}K`;
+}
+
+type AdActivityLevel = 'high' | 'medium' | 'low' | 'none' | 'unknown';
+
+function adActivityLevel(meta: MetaAdsSignals | null): AdActivityLevel {
+  if (!meta) return 'unknown';
+  const c = meta.active_ads_count;
+  if (c >= 50) return 'high';
+  if (c >= 10) return 'medium';
+  if (c >= 1) return 'low';
+  return 'none';
+}
+
+function computeScores(company: MasterRow, meta: MetaAdsSignals | null) {
   const followers = parseNumeric(company.combined_followers);
   const sales = parseNumeric(company.estimated_yearly_sales);
+  const adsCount = meta?.active_ads_count ?? 0;
+  const landingPagesCount = meta?.unique_landing_pages.length ?? 0;
+  const platform = (company.platform ?? '').toLowerCase();
+  const isShopify = platform.includes('shopify');
+  const socialChannels = [company.facebook_url, company.instagram_url, company.tiktok_url].filter(
+    Boolean
+  ).length;
 
-  let score = 0;
   const reasons: string[] = [];
 
-  // Followers (log-scale buckets, up to 35 points)
-  if (followers > 0) {
-    score += Math.min(35, Math.round(Math.log10(followers) * 7));
-    const fmt =
-      followers >= 1_000_000
-        ? `${(followers / 1_000_000).toFixed(1)}M`
-        : followers >= 1_000
-          ? `${Math.round(followers / 1_000)}K`
-          : `${followers}`;
-    reasons.push(
-      followers >= 100_000
-        ? `Strong social following: ${fmt} combined followers`
-        : `Social following: ${fmt} combined followers`
-    );
+  // --- Growth Score ---
+  let growth = 0;
+
+  if (meta) {
+    if (adsCount >= 100) growth += 35;
+    else if (adsCount >= 50) growth += 30;
+    else if (adsCount >= 25) growth += 25;
+    else if (adsCount >= 10) growth += 18;
+    else if (adsCount >= 1) growth += 10;
+
+    if (landingPagesCount >= 10) growth += 15;
+    else if (landingPagesCount >= 6) growth += 12;
+    else if (landingPagesCount >= 3) growth += 8;
+    else if (landingPagesCount >= 1) growth += 3;
+
+    if (adsCount > 0) {
+      reasons.push(`${adsCount} active Meta ads`);
+    } else {
+      reasons.push('No active Meta ads found in Ad Library');
+    }
+    if (landingPagesCount >= 10) {
+      reasons.push(`${landingPagesCount} unique landing pages — heavy funnel testing`);
+    } else if (landingPagesCount >= 3) {
+      reasons.push(`${landingPagesCount} unique landing pages in active ads`);
+    }
+    if (meta.platforms.length > 0) {
+      const names = meta.platforms.map((p) => p.charAt(0).toUpperCase() + p.slice(1));
+      reasons.push(`Active on ${names.join(' + ')}`);
+    }
   } else {
-    reasons.push('No social follower data available');
+    // Conservative redistribution: no ad/landing-page points awarded.
+    reasons.push('Meta Ad Library data unavailable');
   }
 
-  // Estimated yearly sales (up to 30 points)
   if (sales > 0) {
-    score += Math.min(30, Math.round(Math.log10(sales) * 4));
-    const fmt =
-      sales >= 1_000_000
-        ? `$${(sales / 1_000_000).toFixed(1)}M`
-        : `$${Math.round(sales / 1_000)}K`;
-    reasons.push(`Estimated yearly sales: ${fmt}`);
+    growth += Math.min(20, Math.log10(sales) * 3);
+    reasons.push(`Estimated yearly sales: ${formatMoney(sales)}`);
   }
-
-  // Social channel presence (5 points each)
-  const channels: string[] = [];
-  if (company.instagram_url) channels.push('Instagram');
-  if (company.facebook_url) channels.push('Facebook');
-  if (company.tiktok_url) channels.push('TikTok');
-  score += channels.length * 5;
-  if (channels.length > 0) {
-    reasons.push(`Active on ${channels.length} social channel${channels.length > 1 ? 's' : ''}: ${channels.join(', ')}`);
+  if (followers > 0) {
+    growth += Math.min(15, Math.log10(followers) * 3);
   }
-
-  // Platform bonus
-  const platform = (company.platform ?? '').toLowerCase();
-  if (platform.includes('shopify')) {
-    score += 10;
+  if (isShopify) {
+    growth += 8;
     reasons.push('Runs on Shopify');
-  } else if (company.platform) {
-    reasons.push(`Ecommerce platform: ${company.platform}`);
+  }
+  if (socialChannels >= 2) {
+    growth += 7;
+    reasons.push(`Present on ${socialChannels} social channels`);
   }
 
-  const growth_score = clamp(score);
-  const paid_media_signal =
-    growth_score >= 70 ? 'high' : growth_score >= 40 ? 'medium' : 'low';
+  const growth_score = clamp(growth);
 
-  // Northbeam fit: growth score adjusted by sales data presence
-  const northbeam_fit_score = clamp(
-    growth_score + (sales >= 5_000_000 ? 15 : sales > 0 ? 5 : -10)
-  );
+  // --- Northbeam Fit Score ---
+  let fit = 0;
+  if (meta) {
+    if (adsCount >= 50) fit += 35;
+    else if (adsCount >= 10) fit += 25;
+    else if (adsCount >= 1) fit += 15;
+
+    if (landingPagesCount >= 10) fit += 15;
+    else if (landingPagesCount >= 5) fit += 8;
+
+    // Evidence of paid acquisition
+    if (adsCount > 0) fit += 10;
+  }
+  if (sales > 0) fit += Math.min(25, Math.log10(sales) * 4);
+  if (isShopify) fit += 10;
+  if (socialChannels >= 2) fit += 5;
+
+  const northbeam_fit_score = clamp(fit);
+
+  const activity = adActivityLevel(meta);
+  const paid_media_signal = activity === 'unknown' || activity === 'none' ? 'low' : activity;
+
+  const recommended_buyer =
+    growth_score < 40 ? 'Founder / CEO' : 'VP Growth / Head of Performance Marketing';
 
   const category = company.categories?.split(/[,;|/]/)[0]?.trim() || 'DTC';
-  const recommended_buyer = 'VP Growth / Head of Performance Marketing';
-  const recommended_angle = `Help their ${category} brand scale paid acquisition with better attribution and incrementality measurement.`;
-  const followerHook =
-    followers > 0
-      ? `With ${followers.toLocaleString()} combined social followers`
-      : `As a ${company.platform || 'DTC'} brand`;
-  const outbound_hook = `${followerHook}, ${company.domain} is well positioned to scale paid media — but most brands at this stage are flying blind on attribution.`;
+  const recommended_angle =
+    activity === 'high' || activity === 'medium'
+      ? 'Measurement + incrementality across scaling paid channels'
+      : `Help their ${category} brand scale paid acquisition with better attribution and incrementality measurement.`;
+
+  let outbound_hook: string;
+  if (meta && adsCount > 0) {
+    outbound_hook = `Noticed ${meta.advertiser_name ?? company.domain} is running ${adsCount} active Meta ads across ${landingPagesCount} landing pages — brands testing at this volume are often struggling to see which campaigns are truly incremental.`;
+  } else {
+    const followerHook =
+      followers > 0
+        ? `With ${followers.toLocaleString()} combined social followers`
+        : `As a ${company.platform || 'DTC'} brand`;
+    outbound_hook = `${followerHook}, ${company.domain} is well positioned to scale paid media — but most brands at this stage are flying blind on attribution.`;
+  }
 
   return {
     growth_score,
@@ -115,7 +169,22 @@ function placeholderScore(company: MasterRow) {
     recommended_buyer,
     recommended_angle,
     outbound_hook,
-    reasons: reasons.slice(0, 5),
+    reasons: reasons.slice(0, 6),
+    ad_activity_level: activity,
+  };
+}
+
+function metaAdsResponse(meta: MetaAdsSignals | null, activity: AdActivityLevel) {
+  if (!meta) return null;
+  return {
+    advertiser_name: meta.advertiser_name,
+    active_ads_count: meta.active_ads_count,
+    ad_activity_level: activity,
+    unique_landing_pages: meta.unique_landing_pages,
+    sample_ad_copy: meta.sample_ad_copy,
+    sample_creatives: meta.sample_creatives,
+    platforms: meta.platforms,
+    first_seen_date: meta.first_seen_date,
   };
 }
 
@@ -190,6 +259,20 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (cached) {
+      // Surface stored meta_ads on cached responses too.
+      const cachedMeta =
+        (cached.raw_response as { meta_ads?: Record<string, unknown> | null } | null)
+          ?.meta_ads ?? null;
+      let cachedMetaOut: Record<string, unknown> | null = null;
+      if (cachedMeta) {
+        const count = Number(cachedMeta.active_ads_count ?? 0);
+        cachedMetaOut = {
+          ...cachedMeta,
+          ad_activity_level:
+            cachedMeta.ad_activity_level ??
+            (count >= 50 ? 'high' : count >= 10 ? 'medium' : count >= 1 ? 'low' : 'none'),
+        };
+      }
       return NextResponse.json({
         domain: company.domain,
         growth_score: cached.growth_score,
@@ -199,13 +282,27 @@ export async function POST(request: Request) {
         recommended_angle: cached.recommended_angle,
         outbound_hook: cached.outbound_hook,
         reasons: cached.reasons,
+        meta_ads: cachedMetaOut,
         cached: true,
         company,
       });
     }
 
-    // TODO: replace placeholder scoring with Claude + enrichment signals
-    const analysis = placeholderScore(company);
+    // Phase 2: fetch Meta Ad Library signals via Apify (graceful degradation).
+    let meta: MetaAdsSignals | null = null;
+    if (company.facebook_url && process.env.APIFY_TOKEN) {
+      try {
+        meta = await fetchMetaAdsSignals(company.facebook_url);
+      } catch (err) {
+        logger.error('Meta Ads fetch failed — falling back to heuristic scoring', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        meta = null;
+      }
+    }
+
+    const analysis = computeScores(company, meta);
+    const metaOut = metaAdsResponse(meta, analysis.ad_activity_level);
 
     const { error: insertError } = await supabase.from('domain_analyses').insert({
       domain: company.domain,
@@ -217,7 +314,12 @@ export async function POST(request: Request) {
       recommended_angle: analysis.recommended_angle,
       outbound_hook: analysis.outbound_hook,
       reasons: analysis.reasons,
-      raw_response: { method: 'placeholder-heuristic-v1', inputs: company },
+      raw_response: {
+        method: meta ? 'apify-meta-ads-v1' : 'heuristic-fallback-v1',
+        inputs: company,
+        meta_ads: metaOut,
+        apify_raw: meta?.raw ?? null,
+      },
     });
 
     if (insertError) {
@@ -226,7 +328,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       domain: company.domain,
-      ...analysis,
+      growth_score: analysis.growth_score,
+      northbeam_fit_score: analysis.northbeam_fit_score,
+      paid_media_signal: analysis.paid_media_signal,
+      recommended_buyer: analysis.recommended_buyer,
+      recommended_angle: analysis.recommended_angle,
+      outbound_hook: analysis.outbound_hook,
+      reasons: analysis.reasons,
+      meta_ads: metaOut,
       cached: false,
       company,
     });

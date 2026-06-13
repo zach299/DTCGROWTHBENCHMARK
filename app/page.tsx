@@ -2,6 +2,17 @@
 
 import { useState } from 'react';
 
+interface MetaAds {
+  advertiser_name: string | null;
+  active_ads_count: number;
+  ad_activity_level: string;
+  unique_landing_pages: string[];
+  sample_ad_copy: string[];
+  sample_creatives: string[];
+  platforms: string[];
+  first_seen_date: string | null;
+}
+
 interface AnalysisResult {
   domain: string;
   growth_score: number;
@@ -11,8 +22,21 @@ interface AnalysisResult {
   recommended_angle: string;
   outbound_hook: string;
   reasons: string[];
+  meta_ads?: MetaAds | null;
   cached: boolean;
   company?: Record<string, unknown>;
+}
+
+function activityBadge(level: string): string {
+  if (level === 'high') return 'bg-green-100 text-green-800';
+  if (level === 'medium') return 'bg-yellow-100 text-yellow-800';
+  if (level === 'low') return 'bg-orange-100 text-orange-800';
+  return 'bg-gray-100 text-gray-600';
+}
+
+function truncateUrl(url: string, max = 60): string {
+  const display = url.replace(/^https?:\/\/(www\.)?/, '');
+  return display.length > max ? display.slice(0, max) + '…' : display;
 }
 
 function scoreColor(score: number): string {
@@ -128,6 +152,85 @@ export default function Home() {
                 </span>
               </div>
             </div>
+
+            {result.meta_ads ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Meta Ads</h3>
+                <div className="flex flex-wrap items-center gap-6 mb-4">
+                  <div>
+                    <div className="text-sm text-gray-500 mb-1">Active Ads</div>
+                    <div className="text-4xl font-bold text-gray-900">
+                      {result.meta_ads.active_ads_count}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-500 mb-2">Ad Activity Level</div>
+                    <span
+                      className={`inline-block rounded-full px-3 py-1 text-sm font-semibold uppercase ${activityBadge(result.meta_ads.ad_activity_level)}`}
+                    >
+                      {result.meta_ads.ad_activity_level}
+                    </span>
+                  </div>
+                  {result.meta_ads.platforms.length > 0 && (
+                    <div>
+                      <div className="text-sm text-gray-500 mb-2">Platforms</div>
+                      <div className="flex flex-wrap gap-2">
+                        {result.meta_ads.platforms.map((p) => (
+                          <span
+                            key={p}
+                            className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 capitalize"
+                          >
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {result.meta_ads.unique_landing_pages.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                      Top Landing Pages
+                    </h4>
+                    <ul className="space-y-1">
+                      {result.meta_ads.unique_landing_pages.slice(0, 10).map((url, i) => (
+                        <li key={i}>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:text-blue-800 break-all"
+                          >
+                            {truncateUrl(url)}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {result.meta_ads.sample_ad_copy.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Sample Ad Copy</h4>
+                    <div className="space-y-2">
+                      {result.meta_ads.sample_ad_copy.slice(0, 3).map((copy, i) => (
+                        <blockquote
+                          key={i}
+                          className="rounded-lg border-l-4 border-blue-200 bg-gray-50 px-4 py-2 text-sm text-gray-700 italic"
+                        >
+                          {copy}
+                        </blockquote>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              !result.cached && (
+                <p className="text-sm text-gray-400">No Meta Ad Library data available</p>
+              )
+            )}
 
             {Array.isArray(result.reasons) && result.reasons.length > 0 && (
               <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
