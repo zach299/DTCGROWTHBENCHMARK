@@ -1,4 +1,4 @@
-// Growth Signals — Chrome extension popup.
+// Growth Signals — Chrome extension popup (dark, condensed).
 const DEFAULT_API_BASE = 'https://dtcgrowthbenchmark.vercel.app';
 const SKIP_HOSTS = [
   'linkedin.com', 'facebook.com', 'instagram.com', 'google.com', 'x.com',
@@ -9,31 +9,25 @@ const MOMENTUM_EMOJI = { Dormant: '😴', Emerging: '🌱', Scaling: '📈', Acc
 
 const el = (id) => document.getElementById(id);
 let API_BASE = DEFAULT_API_BASE;
-let current = null; // normalized result
+let current = null;
 
-async function getApiBase() {
-  return new Promise((res) => {
-    chrome.storage.sync.get(['apiBase'], (v) => res((v.apiBase || DEFAULT_API_BASE).replace(/\/$/, '')));
-  });
-}
+const getApiBase = () =>
+  new Promise((res) => chrome.storage.sync.get(['apiBase'], (v) => res((v.apiBase || DEFAULT_API_BASE).replace(/\/$/, ''))));
 
-async function detectDomain() {
-  return new Promise((resolve) => {
+const detectDomain = () =>
+  new Promise((resolve) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       try {
         const host = new URL(tabs[0].url).hostname.replace(/^www\./, '');
-        if (SKIP_HOSTS.some((s) => host === s || host.endsWith('.' + s))) return resolve('');
-        resolve(host);
+        resolve(SKIP_HOSTS.some((s) => host === s || host.endsWith('.' + s)) ? '' : host);
       } catch {
         resolve('');
       }
     });
   });
-}
 
-// Normalize the two API response shapes (/api/company vs /api/analyze-domain).
 function normalize(data, company) {
-  const a = data.analysis ?? data; // company endpoint nests under .analysis
+  const a = data.analysis ?? data;
   const co = company ?? data.company ?? {};
   const adCount = (name) => {
     const p = (a.ad_platforms ?? []).find((x) => x.platform === name);
@@ -42,69 +36,76 @@ function normalize(data, company) {
   return {
     domain: data.domain || co.domain,
     brand: a.meta_ads?.advertiser_name || (data.domain || co.domain || '').replace(/^www\./, '').split('.')[0],
-    growth_score: a.growth_score,
-    growth_momentum: a.growth_momentum,
-    revenue_range: a.revenue_range,
-    revenue_confidence: a.revenue_confidence,
+    growth_momentum: a.growth_momentum ?? null,
     meta: a.meta_ads?.active_ads_count ?? adCount('Meta'),
-    google: adCount('Google'),
-    linkedin: adCount('LinkedIn'),
-    themes: a.landing_page_signals?.campaign_themes ?? [],
+    cache_age_days: data.cache_age_days ?? a.cache_age_days ?? null,
     research_brief: a.research_brief ?? null,
+    rank: null,
+    percentile_top: null,
   };
+}
+
+function lastUpdated(days) {
+  if (days == null) return 'just now';
+  if (days < 1) return 'today';
+  if (days < 2) return 'yesterday';
+  if (days < 30) return `${Math.round(days)} days ago`;
+  return `${Math.round(days / 30)} mo ago`;
 }
 
 function setStatus(html) {
   el('status').innerHTML = html;
   el('status').classList.remove('hidden');
 }
-function clearStatus() { el('status').classList.add('hidden'); }
+const clearStatus = () => el('status').classList.add('hidden');
+
+function loadingChart(text) {
+  return `
+    <svg class="chart" width="160" height="70" viewBox="0 0 160 70">
+      <polyline points="0,60 26,52 52,55 78,34 104,40 130,18 160,6" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="draw"/>
+    </svg>
+    <div>${text}</div>`;
+}
 
 function render(n) {
   current = n;
-  const platforms = [
-    ['Meta', n.meta], ['Google', n.google], ['LinkedIn', n.linkedin],
-  ].map(([name, c]) => `
-    <div class="platform"><div class="p-name">${name}</div>
-      <div class="p-count">${c == null ? '—' : c}</div></div>`).join('');
-  const themes = n.themes.length
-    ? `<div class="section-label">Top Campaign Themes</div><div class="chips">${n.themes.slice(0, 6).map((t) => `<span class="chip">${t}</span>`).join('')}</div>`
-    : '';
-  const briefSummary = n.research_brief ? extractOverview(n.research_brief) : '';
+  const rankLine =
+    n.rank != null
+      ? `<div class="rank-badge">🔥 #${n.rank}${n.percentile_top != null ? ` · Top ${n.percentile_top}%` : ''}</div>`
+      : '';
   el('result').innerHTML = `
-    <div class="r-head">
-      <div><div class="r-name">${n.brand}</div><div class="r-domain">${n.domain}</div></div>
-      ${n.growth_momentum ? `<span class="badge green">${n.growth_momentum} ${MOMENTUM_EMOJI[n.growth_momentum] || ''}</span>` : ''}
-    </div>
-    <div class="r-grid">
-      <div><div class="kpi-label">Growth Score</div><div class="kpi-value">${n.growth_score ?? '—'}</div></div>
-      <div><div class="kpi-label">Est. Revenue</div><div class="kpi-value small">${n.revenue_range ?? '—'}</div></div>
-    </div>
-    <div class="platforms">${platforms}</div>
-    ${themes}
-    ${briefSummary ? `<div class="section-label">Research Brief</div><div class="brief">${briefSummary}</div>` : ''}
-  `;
+    <div class="r-name">${n.brand}</div>
+    <div class="r-domain">${n.domain}</div>
+    ${rankLine}
+    <div class="rows">
+      <div class="row"><span class="label">Meta Ads</span><span class="value">${n.meta ?? '—'}</span></div>
+      <div class="row"><span class="label">Momentum</span><span class="value green">${n.growth_momentum ?? '—'} ${n.growth_momentum ? MOMENTUM_EMOJI[n.growth_momentum] || '' : ''}</span></div>
+      ${n.rank != null ? `<div class="row"><span class="label">Growth Rank</span><span class="value">#${n.rank}</span></div>` : ''}
+      <div class="row"><span class="label">Last Updated</span><span class="value">${lastUpdated(n.cache_age_days)}</span></div>
+    </div>`;
   el('result').classList.remove('hidden');
   el('actions').classList.remove('hidden');
 }
 
-function extractOverview(brief) {
-  // Show Business Overview + Recommended Outreach Angle compactly.
-  const grab = (header) => {
-    const re = new RegExp(`## ${header}\\n([\\s\\S]*?)(?:\\n## |$)`);
-    const m = brief.match(re);
-    return m ? m[1].trim() : '';
-  };
-  const overview = grab('Business Overview');
-  const angle = grab('Recommended Outreach Angle');
-  return [overview, angle && `\n\nAngle: ${angle}`].filter(Boolean).join('');
+async function fetchRank(n) {
+  if (n.meta == null) return;
+  try {
+    const r = await fetch(`${API_BASE}/api/rank`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: n.domain, active_meta_ads: n.meta }),
+    });
+    const d = await r.json();
+    n.rank = d.rank;
+    n.percentile_top = d.percentile_top;
+    render(n);
+  } catch { /* ignore */ }
 }
 
 async function analyze(domain) {
   if (!domain) return;
   el('result').classList.add('hidden');
   el('actions').classList.add('hidden');
-  setStatus('<span class="spinner"></span> Looking up ' + domain + '…');
+  setStatus(loadingChart('Loading Growth Signals…'));
   try {
     const res = await fetch(`${API_BASE}/api/company`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -117,11 +118,11 @@ async function analyze(domain) {
     }
     if (data.analysis) {
       clearStatus();
-      render(normalize(data, data.company));
+      const n = normalize(data, data.company);
+      render(n);
+      fetchRank(n);
     } else {
-      // Not analyzed yet — show the company, run enrichment, refresh.
-      render(normalize({ analysis: {}, domain: data.domain, company: data.company }, data.company));
-      setStatus('<span class="spinner"></span> Analyzing company…');
+      setStatus(loadingChart('Analyzing company…'));
     }
     if (data.needs_enrichment) {
       const enrich = await fetch(`${API_BASE}/api/analyze-domain`, {
@@ -131,10 +132,10 @@ async function analyze(domain) {
       const fresh = await enrich.json();
       if (enrich.ok) {
         clearStatus();
-        render(normalize(fresh));
-      } else {
-        clearStatus();
-      }
+        const n = normalize(fresh);
+        render(n);
+        fetchRank(n);
+      } else clearStatus();
     }
   } catch {
     setStatus('<div class="error">Network error. Check the API URL in settings.</div>');
@@ -149,7 +150,6 @@ async function saveTo(list) {
   });
 }
 
-// ---- wire up ----
 (async function init() {
   API_BASE = await getApiBase();
   const detected = await detectDomain();
@@ -159,19 +159,12 @@ async function saveTo(list) {
   el('analyze').addEventListener('click', () => analyze(el('domain').value.trim()));
   el('domain').addEventListener('keydown', (e) => { if (e.key === 'Enter') analyze(el('domain').value.trim()); });
   el('settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
-
   el('open-report').addEventListener('click', () => {
     if (current) chrome.tabs.create({ url: `${API_BASE}/?domain=${encodeURIComponent(current.domain)}` });
   });
   el('save').addEventListener('click', async (e) => {
     await saveTo('Prospects');
     e.target.textContent = '✓ Saved'; e.target.classList.add('ok');
-  });
-  el('brief').addEventListener('click', () => {
-    if (current?.research_brief) {
-      navigator.clipboard.writeText(current.research_brief);
-      el('brief').textContent = '✓ Copied';
-    }
   });
   const lists = el('lists');
   lists.innerHTML = WATCHLISTS.map((l) => `<button data-list="${l}">Add to ${l}</button>`).join('');
