@@ -489,6 +489,37 @@ export async function POST(request: Request) {
       logger.error('Homepage crawl failed', { error: crawlError });
     }
 
+    // The live Meta scrape is non-deterministic — the page-scoped query can
+    // intermittently return 0 even for brands that clearly advertise. When that
+    // happens, fall back to the most recent stored bulk signal so the profile
+    // stays consistent with the Top Movers leaderboard instead of showing a
+    // false 0. (Only trust plausible counts; ignore pre-fix contamination.)
+    if (!meta || meta.active_ads_count === 0) {
+      try {
+        const { data: stored } = await supabase
+          .from('company_meta_signals')
+          .select('active_meta_ads, company_name, landing_pages, sample_ad_copy, first_seen_date, last_enriched_at')
+          .eq('domain', cleanDomain)
+          .maybeSingle();
+        const storedCount = Number(stored?.active_meta_ads ?? 0);
+        if (storedCount > 0 && storedCount < 13000) {
+          meta = {
+            advertiser_name: (stored?.company_name as string) ?? meta?.advertiser_name ?? null,
+            active_ads_count: storedCount,
+            unique_landing_pages: Array.isArray(stored?.landing_pages) ? (stored!.landing_pages as string[]) : [],
+            sample_ad_copy: Array.isArray(stored?.sample_ad_copy) ? (stored!.sample_ad_copy as string[]) : [],
+            sample_creatives: [],
+            first_seen_date: (stored?.first_seen_date as string) ?? null,
+            platforms: [],
+            raw: meta?.raw ?? [],
+          };
+          metaError = null;
+        }
+      } catch {
+        /* fallback is best-effort */
+      }
+    }
+
     const analysis = computeScores(company, meta);
     const metaOut = metaAdsResponse(meta, analysis.ad_activity_level);
     const campaignThemes = inferCampaignThemes(meta?.unique_landing_pages ?? []);
