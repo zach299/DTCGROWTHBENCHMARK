@@ -32,17 +32,18 @@ export interface ResearchBriefInput {
 function productHints(landingPages: string[], copy: string[]): string[] {
   const text = (landingPages.join(' ') + ' ' + copy.join(' ')).toLowerCase();
   const hints: { kw: RegExp; label: string }[] = [
-    { kw: /wallet|card-?holder/, label: 'wallets / card holders' },
+    { kw: /\bwallets?\b|card-?holder/, label: 'wallets / card holders' },
     { kw: /\brings?\b/, label: 'rings' },
-    { kw: /chain|necklace|jewelry/, label: 'jewelry' },
-    { kw: /charger|magsafe|power|battery/, label: 'chargers / power' },
-    { kw: /bag|backpack|tote/, label: 'bags' },
-    { kw: /bottle|tumbler|hydration/, label: 'drinkware' },
-    { kw: /supplement|vitamin|powder|greens/, label: 'supplements' },
-    { kw: /skin|serum|cream|beauty/, label: 'skincare / beauty' },
-    { kw: /apparel|tee|shirt|hoodie|clothing/, label: 'apparel' },
-    { kw: /shoe|sneaker|footwear/, label: 'footwear' },
-    { kw: /gift|gifting/, label: 'gifting bundles' },
+    { kw: /\bchains?\b|necklace|jewelry/, label: 'jewelry' },
+    { kw: /\bchargers?\b|magsafe|power\s?bank|\bbattery\b/, label: 'chargers / power' },
+    { kw: /cookware|\bpots?\b|\bpans?\b|kitchenware|cast iron|nonstick|\bknives\b|\bknife\b/, label: 'cookware / kitchen' },
+    { kw: /\bbags?\b|backpack|\btote\b/, label: 'bags' },
+    { kw: /\bbottles?\b|tumbler|hydration/, label: 'drinkware' },
+    { kw: /supplement|vitamin|\bgreens\b|protein\s?powder/, label: 'supplements' },
+    { kw: /skincare|\bserum\b|moisturiz|\bbeauty\b/, label: 'skincare / beauty' },
+    { kw: /\bapparel\b|\btees?\b|t-?shirts?|hoodie|\bclothing\b/, label: 'apparel' },
+    { kw: /\bshoes?\b|sneaker|footwear/, label: 'footwear' },
+    { kw: /\bgift(s|ing)?\b/, label: 'gifting bundles' },
   ];
   const out: string[] = [];
   for (const h of hints) if (h.kw.test(text) && !out.includes(h.label)) out.push(h.label);

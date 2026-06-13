@@ -1040,7 +1040,11 @@ export default function Home() {
                         </div>
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Campaign Diversity</div>
-                          <div className="text-lg font-semibold text-gray-900">{diversity(themes.length)}</div>
+                          <div className="text-lg font-semibold text-gray-900">
+                            {diversity(
+                              Math.max(themes.length, result.meta_ads?.unique_landing_pages.length ?? 0)
+                            )}
+                          </div>
                         </div>
                       </div>
 

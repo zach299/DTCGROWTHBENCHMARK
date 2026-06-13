@@ -491,9 +491,15 @@ export function inferCampaignThemes(landingPages: string[]): string[] {
     if (/holiday|xmas|christmas|thanksgiving/.test(slug)) themes.add('Holiday Campaign');
     if (/edc|everyday.carry/.test(slug)) themes.add('EDC / Everyday Carry');
     if (/tech|partner|collab/.test(slug)) themes.add('Brand Partnership');
-    if (/ring/.test(slug)) themes.add('Rings / Accessories');
+    if (/\bring/.test(slug)) themes.add('Rings / Accessories');
     if (/wallet|card/.test(slug)) themes.add('Wallet / Card Holder');
     if (/summer|spring|fall|winter/.test(slug)) themes.add('Seasonal Campaign');
+    // Generic patterns so non-jewelry brands still surface themes.
+    if (/\d+-?pc|\d+-?piece|\bset\b|sets\b|kit\b/.test(slug)) themes.add('Bundle / Set');
+    if (/cookware|knive|knife|\bpan|\bpot|kitchen/.test(slug)) themes.add('Cookware / Kitchen');
+    if (/collection|shop-all|best-?seller/.test(slug)) themes.add('Collection / Best Sellers');
+    if (/subscri|refill|replenish/.test(slug)) themes.add('Subscription / Refill');
+    if (/review|testimonial/.test(slug)) themes.add('Social Proof');
   }
   return [...themes].slice(0, 8);
 }
