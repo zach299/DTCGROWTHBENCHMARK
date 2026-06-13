@@ -140,20 +140,36 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
       searchQuery: domain,
       maxResults: 100,
     });
-    // The domain search can match unrelated advertisers (e.g. resellers), so
-    // keep only ads whose advertiser name plausibly matches the brand.
+    // The domain search can return unrelated advertisers (resellers/affiliates).
+    // Group by advertiser and keep the dominant one — almost always the brand,
+    // even when its Google advertiser name differs from the domain (e.g.
+    // drinkag1.com -> "Athletic Greens"). Still drop sparse single-ad noise that
+    // doesn't match the brand name (e.g. a reseller showing for postscript.io).
     const brand = norm(domain.replace(/^www\./i, '').split('.')[0]);
-    const matched =
-      brand.length >= 3
-        ? list.filter((it) => {
-            const adv = norm(asString(it.advertiserName) ?? '');
-            return adv.includes(brand) || brand.includes(adv);
-          })
-        : list;
-    const relevant = matched.length > 0 ? matched : [];
+    const byAdv = new Map<string, Record<string, unknown>[]>();
+    for (const it of list) {
+      const name = asString(it.advertiserName) ?? 'unknown';
+      const arr = byAdv.get(name) ?? [];
+      arr.push(it);
+      byAdv.set(name, arr);
+    }
+    const top = [...byAdv.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+    let relevant: Record<string, unknown>[] = [];
+    let advertiserName: string | null = null;
+    if (top) {
+      const n = norm(top[0]);
+      const brandMatch =
+        top[0] !== 'unknown' && brand.length >= 3 && (n.includes(brand) || brand.includes(n));
+      if (brandMatch || top[1].length >= 3) {
+        relevant = top[1];
+        advertiserName = top[0] === 'unknown' ? null : top[0];
+      }
+    }
     logger.info('Google ads fetched', { domain, items: list.length, matched: relevant.length });
     const result = mapAds('Google', relevant, libraryUrl);
-    result.note = `items=${list.length} matched=${relevant.length}`;
+    result.note = `items=${list.length} matched=${relevant.length}${
+      advertiserName ? ` advertiser=${advertiserName}` : ''
+    }`;
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

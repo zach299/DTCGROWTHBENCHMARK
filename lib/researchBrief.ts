@@ -32,7 +32,7 @@ function productHints(landingPages: string[], copy: string[]): string[] {
   const text = (landingPages.join(' ') + ' ' + copy.join(' ')).toLowerCase();
   const hints: { kw: RegExp; label: string }[] = [
     { kw: /wallet|card-?holder/, label: 'wallets / card holders' },
-    { kw: /ring/, label: 'rings' },
+    { kw: /\brings?\b/, label: 'rings' },
     { kw: /chain|necklace|jewelry/, label: 'jewelry' },
     { kw: /charger|magsafe|power|battery/, label: 'chargers / power' },
     { kw: /bag|backpack|tote/, label: 'bags' },

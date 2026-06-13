@@ -208,7 +208,9 @@ export async function fetchMetaAdsSignals(
       asString(item.adText) ??
       asString(item.body) ??
       asString(get(item, ['snapshot', 'cards', 0, 'body']));
-    if (copy && adCopy.length < 5 && !adCopy.includes(copy)) adCopy.push(copy);
+    // Skip dynamic-creative placeholders (e.g. "{{product.brand}}").
+    const isTemplate = copy ? /\{\{.*?\}\}/.test(copy) && copy.replace(/\{\{.*?\}\}/g, '').trim().length < 15 : false;
+    if (copy && !isTemplate && adCopy.length < 5 && !adCopy.includes(copy)) adCopy.push(copy);
 
     const link =
       asString(get(item, ['snapshot', 'link_url'])) ??
