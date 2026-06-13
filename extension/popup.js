@@ -1,4 +1,7 @@
-// Growth Signals — Chrome extension popup (dark, condensed).
+// Growth Signals — Chrome extension popup (dark, premium, rep-first).
+// Every lookup runs through /api/extension/lookup, which makes unknown domains
+// first-class companies and reports 7-day cache state. Stale/missing data is
+// enriched automatically without blocking the cached view.
 const DEFAULT_API_BASE = 'https://dtcgrowthbenchmark.vercel.app';
 const SKIP_HOSTS = [
   'linkedin.com', 'facebook.com', 'instagram.com', 'google.com', 'x.com',
@@ -26,22 +29,23 @@ const detectDomain = () =>
     });
   });
 
-function normalize(data, company) {
-  const a = data.analysis ?? data;
-  const co = company ?? data.company ?? {};
-  const adCount = (name) => {
-    const p = (a.ad_platforms ?? []).find((x) => x.platform === name);
-    return p && p.status === 'active' ? p.ads_count ?? 0 : null;
-  };
+// Map a company_meta_signals row (from lookup or enrich-meta) to the view model.
+function normalize(sig, domain) {
+  const s = sig || {};
   return {
-    domain: data.domain || co.domain,
-    brand: a.meta_ads?.advertiser_name || (data.domain || co.domain || '').replace(/^www\./, '').split('.')[0],
-    growth_momentum: a.growth_momentum ?? null,
-    meta: a.meta_ads?.active_ads_count ?? adCount('Meta'),
-    cache_age_days: data.cache_age_days ?? a.cache_age_days ?? null,
-    research_brief: a.research_brief ?? null,
+    domain: domain || s.domain,
+    brand: s.company_name || (domain || s.domain || '').replace(/^www\./, '').split('.')[0],
+    category: s.primary_category || null,
+    growth_momentum: s.growth_momentum || null,
+    revenue_range: s.estimated_revenue_range || null,
+    meta: s.active_meta_ads ?? null,
+    google: s.google_ads ?? 0,
+    linkedin: s.linkedin_ads ?? 0,
+    cache_age_days: null,
     rank: null,
     percentile_top: null,
+    category_rank: null,
+    category_total: null,
   };
 }
 
@@ -59,46 +63,76 @@ function setStatus(html) {
 }
 const clearStatus = () => el('status').classList.add('hidden');
 
+// Alive loader: chart line grows upward with a glowing spark running along it.
 function loadingChart(text) {
   return `
-    <svg class="chart" width="160" height="70" viewBox="0 0 160 70">
-      <polyline points="0,60 26,52 52,55 78,34 104,40 130,18 160,6" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="draw"/>
-    </svg>
-    <div>${text}</div>`;
+    <div class="loader">
+      <svg class="chart" width="180" height="80" viewBox="0 0 180 80">
+        <defs>
+          <linearGradient id="lg" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#34d399"/>
+          </linearGradient>
+        </defs>
+        <polyline points="0,70 30,60 60,64 90,38 120,46 150,18 180,6"
+          fill="none" stroke="url(#lg)" stroke-width="3.5" stroke-linecap="round"
+          stroke-linejoin="round" class="draw glow"/>
+        <circle r="4" fill="#34d399" class="spark"><animateMotion dur="1.7s" repeatCount="indefinite"
+          path="M0,70 30,60 60,64 90,38 120,46 150,18 180,6"/></circle>
+      </svg>
+      <div class="loader-text">${text}</div>
+    </div>`;
 }
 
 function render(n) {
   current = n;
   const rankLine =
     n.rank != null
-      ? `<div class="rank-badge">🔥 #${n.rank}${n.percentile_top != null ? ` · Top ${n.percentile_top}%` : ''}</div>`
+      ? `<div class="rank-badge">⚡ Growth Rank #${n.rank}${n.percentile_top != null ? ` · Top ${n.percentile_top}%` : ''}</div>`
       : '';
+  const catLine =
+    n.category_rank != null && n.category
+      ? `<div class="row"><span class="label">${n.category} Rank</span><span class="value">#${n.category_rank}${n.category_total ? ` of ${n.category_total}` : ''}</span></div>`
+      : n.category
+        ? `<div class="row"><span class="label">Category</span><span class="value">${n.category}</span></div>`
+        : '';
   el('result').innerHTML = `
     <div class="r-name">${n.brand}</div>
     <div class="r-domain">${n.domain}</div>
     ${rankLine}
     <div class="rows">
-      <div class="row"><span class="label">Meta Ads</span><span class="value">${n.meta ?? '—'}</span></div>
       <div class="row"><span class="label">Momentum</span><span class="value green">${n.growth_momentum ?? '—'} ${n.growth_momentum ? MOMENTUM_EMOJI[n.growth_momentum] || '' : ''}</span></div>
-      ${n.rank != null ? `<div class="row"><span class="label">Growth Rank</span><span class="value">#${n.rank}</span></div>` : ''}
-      <div class="row"><span class="label">Last Updated</span><span class="value">${lastUpdated(n.cache_age_days)}</span></div>
+      <div class="row"><span class="label">Est. Revenue</span><span class="value">${n.revenue_range ?? '—'}</span></div>
+      ${catLine}
+      <div class="row chan"><span class="label">Meta Ads</span><span class="value">${n.meta ?? '—'}</span></div>
+      <div class="row chan"><span class="label">Google Ads</span><span class="value">${n.google ?? 0}</span></div>
+      <div class="row chan"><span class="label">LinkedIn Ads</span><span class="value">${n.linkedin ?? 0}</span></div>
+      <div class="row"><span class="label">Last Updated</span><span class="value muted">${lastUpdated(n.cache_age_days)}</span></div>
     </div>`;
   el('result').classList.remove('hidden');
   el('actions').classList.remove('hidden');
 }
 
 async function fetchRank(n) {
-  if (n.meta == null) return;
   try {
     const r = await fetch(`${API_BASE}/api/rank`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain: n.domain, active_meta_ads: n.meta }),
+      body: JSON.stringify({ domain: n.domain, active_meta_ads: n.meta ?? 0, google_ads: n.google ?? 0, linkedin_ads: n.linkedin ?? 0, primary_category: n.category }),
     });
     const d = await r.json();
     n.rank = d.rank;
     n.percentile_top = d.percentile_top;
+    n.category_rank = d.category_rank;
+    n.category_total = d.category_total;
     render(n);
   } catch { /* ignore */ }
+}
+
+async function enrich(domain, facebookUrl, companyName) {
+  const res = await fetch(`${API_BASE}/api/enrich-meta`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain, facebook_url: facebookUrl || null, company_name: companyName || null, source: 'chrome_extension' }),
+  });
+  return res.ok ? res.json() : null;
 }
 
 async function analyze(domain) {
@@ -107,35 +141,39 @@ async function analyze(domain) {
   el('actions').classList.add('hidden');
   setStatus(loadingChart('Loading Growth Signals…'));
   try {
-    const res = await fetch(`${API_BASE}/api/company`, {
+    const res = await fetch(`${API_BASE}/api/extension/lookup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setStatus(`<div class="error">${res.status === 404 ? `"${domain}" isn't in the database.` : (data.error || 'Something went wrong.')}</div>`);
+      setStatus(`<div class="error">${data.error || 'Something went wrong.'}</div>`);
       return;
     }
-    if (data.analysis) {
+
+    // Show cached signals instantly if we have any.
+    if (data.signals) {
       clearStatus();
-      const n = normalize(data, data.company);
+      const n = normalize(data.signals, data.domain);
+      n.cache_age_days = data.cache_age_days;
       render(n);
       fetchRank(n);
+    } else if (data.is_new) {
+      setStatus(loadingChart('New company detected. Building Growth Signals…'));
     } else {
       setStatus(loadingChart('Analyzing company…'));
     }
+
+    // Auto-enrich when missing or stale (7-day refresh) — non-blocking for cache.
     if (data.needs_enrichment) {
-      const enrich = await fetch(`${API_BASE}/api/analyze-domain`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain }),
-      });
-      const fresh = await enrich.json();
-      if (enrich.ok) {
-        clearStatus();
-        const n = normalize(fresh);
+      const fresh = await enrich(data.domain, data.facebook_url, data.company_name);
+      clearStatus();
+      if (fresh?.ok) {
+        const n = normalize(fresh.signals, data.domain);
+        n.cache_age_days = 0;
         render(n);
         fetchRank(n);
-      } else clearStatus();
+      }
     }
   } catch {
     setStatus('<div class="error">Network error. Check the API URL in settings.</div>');

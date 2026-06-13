@@ -90,17 +90,114 @@ const text = (t) => ({ content: [{ type: 'text', text: t }] });
 
 const server = new McpServer({ name: 'growth-signals', version: '1.0.0' });
 
+// Fetch the full ranking picture (overall + category + channel benchmarks).
+async function fetchRank(n) {
+  try {
+    return await api('/api/rank', {
+      domain: n.domain,
+      active_meta_ads: n.meta ?? 0,
+      google_ads: n.google ?? 0,
+      linkedin_ads: n.linkedin ?? 0,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function formatRank(r) {
+  if (!r) return '';
+  const lines = ['', '--- Rankings ---'];
+  if (r.rank != null) lines.push(`Overall Growth Rank: #${r.rank} of ${r.total}${r.percentile_top ? ` (Top ${r.percentile_top}%)` : ''}`);
+  if (r.category_rank != null) lines.push(`${r.primary_category} Rank: #${r.category_rank} of ${r.category_total}${r.category_percentile_top ? ` (Top ${r.category_percentile_top}%)` : ''}`);
+  for (const c of r.channels ?? []) {
+    if (c.ads > 0) lines.push(`${c.channel}: ${c.ads} ads — ${c.overall_label} overall, ${c.category_label} in ${r.primary_category ?? 'category'}`);
+    else lines.push(`${c.channel}: 0 ads — Below median`);
+  }
+  return lines.join('\n');
+}
+
 server.tool(
   'get_company',
-  'Get the full growth intelligence for a company by domain (e.g. ridge.com). Analyzes it if not already in the database.',
+  'Get the full growth intelligence for a company by domain (e.g. ridge.com), including Growth Rank, Category Rank, channel benchmarks and modeled revenue. Analyzes it if not already in the database.',
   { domain: z.string().describe('Company domain, e.g. ridge.com') },
   async ({ domain }) => {
     try {
       const n = await fetchCompany(domain);
+      const rank = await fetchRank(n);
       const brief = n.research_brief ? `\n\n--- Research Brief ---\n${n.research_brief}` : '';
-      return text(formatCompany(n) + brief);
+      return text(formatCompany(n) + formatRank(rank) + brief);
     } catch (e) {
       return text(`Could not analyze ${domain}: ${e.message}`);
+    }
+  }
+);
+
+// --- Discovery tools backed by the enriched dataset (top-movers + benchmarks). ---
+
+function fmtMover(m, i) {
+  const parts = [`${i + 1}. ${m.company_name || m.domain} (${m.domain})`];
+  if (m.primary_category) parts.push(`[${m.primary_category}]`);
+  parts.push(`— ${m.growth_momentum ?? '—'} ${EMOJI[m.growth_momentum] || ''}`.trim());
+  parts.push(`Meta ${m.active_meta_ads}, Google ${m.google_ads}, LinkedIn ${m.linkedin_ads}`);
+  if (m.estimated_revenue_range) parts.push(`Rev ${m.estimated_revenue_range}`);
+  if (m.percentile_top != null) parts.push(`Top ${m.percentile_top}%`);
+  return parts.join(' ');
+}
+
+server.tool(
+  'find_companies',
+  'Find/segment companies from the enriched dataset. Answers questions like "top 1% in Meta ads", "which Beauty brands are accelerating", "high Meta but low Google", "who should I prioritize this week". Filters combine.',
+  {
+    category: z.string().optional().describe('Primary category, e.g. Beauty, Apparel, Health & Wellness'),
+    channel: z.enum(['Meta', 'Google', 'LinkedIn']).optional().describe('Rank by this channel\'s active ads'),
+    momentum: z.enum(['Scaling', 'Accelerating', 'Exploding']).optional().describe('Minimum momentum tier'),
+    max_percentile_top: z.number().optional().describe('Only companies in at least this top percentile, e.g. 1 = Top 1%'),
+    high_meta_low_google: z.boolean().optional().describe('Companies with strong Meta but little/no Google presence'),
+    limit: z.number().optional(),
+  },
+  async ({ category, channel, momentum, max_percentile_top, high_meta_low_google, limit }) => {
+    try {
+      const data = await api('/api/top-movers');
+      let rows = data.movers ?? [];
+      if (category) rows = rows.filter((m) => (m.primary_category || '').toLowerCase() === category.toLowerCase());
+      const order = { Scaling: 1, Accelerating: 2, Exploding: 3 };
+      if (momentum) rows = rows.filter((m) => (order[m.growth_momentum] ?? 0) >= order[momentum]);
+      if (max_percentile_top != null) rows = rows.filter((m) => m.percentile_top != null && m.percentile_top <= max_percentile_top);
+      if (high_meta_low_google) rows = rows.filter((m) => m.active_meta_ads >= 20 && m.google_ads <= 2);
+      if (channel) {
+        const key = channel === 'Meta' ? 'active_meta_ads' : channel === 'Google' ? 'google_ads' : 'linkedin_ads';
+        rows = rows.filter((m) => m[key] > 0).sort((a, b) => b[key] - a[key]);
+      }
+      rows = rows.slice(0, limit ?? 15);
+      if (!rows.length) return text('No companies match those criteria yet.');
+      const header = [category && `category=${category}`, channel && `channel=${channel}`, momentum && `momentum>=${momentum}`, max_percentile_top && `Top ${max_percentile_top}%`, high_meta_low_google && 'high Meta / low Google'].filter(Boolean).join(', ');
+      return text(`Companies${header ? ` (${header})` : ''}:\n` + rows.map(fmtMover).join('\n'));
+    } catch (e) {
+      return text(`Find failed: ${e.message}`);
+    }
+  }
+);
+
+server.tool(
+  'get_category_benchmarks',
+  'Show peer benchmarks for a category (median Meta/Google/LinkedIn ads, Top 10%/Top 1% Meta thresholds, average growth score). Omit category to list all.',
+  { category: z.string().optional() },
+  async ({ category }) => {
+    try {
+      const { categories } = await api('/api/benchmarks');
+      let rows = categories ?? [];
+      if (category) rows = rows.filter((c) => c.primary_category.toLowerCase() === category.toLowerCase());
+      if (!rows.length) return text('No benchmark data yet.');
+      return text(
+        rows
+          .map(
+            (c) =>
+              `${c.primary_category} (${c.count} brands)\n  Median ads — Meta ${c.median_meta_ads}, Google ${c.median_google_ads}, LinkedIn ${c.median_linkedin_ads}\n  Meta thresholds — Top 10%: ${c.meta_top10_threshold}, Top 1%: ${c.meta_top1_threshold}\n  Avg Growth Score: ${c.avg_growth_score}`
+          )
+          .join('\n\n')
+      );
+    } catch (e) {
+      return text(`Benchmarks failed: ${e.message}`);
     }
   }
 );
@@ -204,15 +301,7 @@ server.tool(
       const { movers } = await api('/api/top-movers');
       const rows = movers.slice(0, limit ?? 15);
       if (!rows.length) return text('No companies analyzed yet.');
-      return text(
-        'Top movers:\n' +
-          rows
-            .map(
-              (m, i) =>
-                `${i + 1}. ${m.domain} — ${m.growth_momentum ?? '—'} ${EMOJI[m.growth_momentum] || ''}, Score ${m.growth_score}, Meta ${m.active_meta_ads} ads${m.ad_growth_pct != null ? ` (${m.ad_growth_pct >= 0 ? '+' : ''}${m.ad_growth_pct}%)` : ''}`.trim()
-            )
-            .join('\n')
-      );
+      return text('Top movers (fastest growing):\n' + rows.map(fmtMover).join('\n'));
     } catch (e) {
       return text(`Top movers failed: ${e.message}`);
     }

@@ -38,9 +38,16 @@ body {
 #analyze:disabled { opacity: 0.5; }
 
 .status { padding: 26px 10px; text-align: center; color: var(--muted); }
-.chart { display: block; margin: 0 auto 10px; }
-.draw { stroke-dasharray: 320; stroke-dashoffset: 320; animation: draw 1.7s ease-out infinite; }
-@keyframes draw { 0% { stroke-dashoffset: 320; } 60%,100% { stroke-dashoffset: 0; } }
+.loader { display: flex; flex-direction: column; align-items: center; }
+.loader-text { margin-top: 6px; animation: pulse 1.6s ease-in-out infinite; }
+.chart { display: block; margin: 0 auto; }
+.draw { stroke-dasharray: 340; stroke-dashoffset: 340; animation: draw 1.7s ease-out infinite; }
+.glow { filter: drop-shadow(0 0 5px rgba(99, 102, 241, 0.65)); }
+.spark { filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.9)); }
+@keyframes draw { 0% { stroke-dashoffset: 340; } 60%,100% { stroke-dashoffset: 0; } }
+@keyframes pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+.row.chan .value { font-variant-numeric: tabular-nums; }
+.value.muted { color: var(--muted); font-weight: 500; }
 
 .result { margin-bottom: 12px; }
 .r-name { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
