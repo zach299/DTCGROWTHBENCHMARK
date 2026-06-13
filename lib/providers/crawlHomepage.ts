@@ -19,9 +19,75 @@ export interface WebsiteSignals {
   careers_roles: string[];
 }
 
+export interface DetectedTech {
+  name: string;
+  category: string;
+}
+
 export interface HomepageCrawlResult {
   brand_context: BrandContext;
   website_signals: WebsiteSignals;
+  tech_stack: DetectedTech[];
+}
+
+// Fingerprints matched against the raw page HTML (script srcs, pixel snippets,
+// CDN domains, global vars). Ordered roughly by GTM relevance.
+const TECH_FINGERPRINTS: { name: string; category: string; pattern: RegExp }[] = [
+  // Attribution / analytics — highest GTM relevance for Northbeam
+  { name: 'Northbeam', category: 'Attribution', pattern: /northbeam/i },
+  { name: 'Triple Whale', category: 'Attribution', pattern: /triplewhale|triple-whale|tw-pixel/i },
+  { name: 'Elevar', category: 'Attribution', pattern: /elevar|getelevar/i },
+  { name: 'Rockerbox', category: 'Attribution', pattern: /rockerbox/i },
+  { name: 'Google Analytics', category: 'Analytics', pattern: /google-analytics\.com|gtag\(|googletagmanager\.com\/gtag/i },
+  { name: 'Google Tag Manager', category: 'Analytics', pattern: /googletagmanager\.com\/gtm/i },
+  // Ad pixels — paid channel signals
+  { name: 'Meta Pixel', category: 'Ad Pixel', pattern: /connect\.facebook\.net|fbevents\.js|fbq\(/i },
+  { name: 'TikTok Pixel', category: 'Ad Pixel', pattern: /analytics\.tiktok\.com|ttq\.load|ttq\.track/i },
+  { name: 'Google Ads', category: 'Ad Pixel', pattern: /googleadservices\.com|google_conversion|aw-\d/i },
+  { name: 'Pinterest Tag', category: 'Ad Pixel', pattern: /pintrk\(|s\.pinimg\.com/i },
+  { name: 'Snapchat Pixel', category: 'Ad Pixel', pattern: /snaptr\(|sc-static\.net/i },
+  // Platform
+  { name: 'Shopify', category: 'Platform', pattern: /cdn\.shopify\.com|shopify\.com|myshopify\.com|Shopify\./i },
+  { name: 'WooCommerce', category: 'Platform', pattern: /woocommerce/i },
+  { name: 'BigCommerce', category: 'Platform', pattern: /bigcommerce/i },
+  // Email / SMS — lifecycle stack
+  { name: 'Klaviyo', category: 'Email/SMS', pattern: /klaviyo/i },
+  { name: 'Attentive', category: 'Email/SMS', pattern: /attentive|attentivemobile/i },
+  { name: 'Postscript', category: 'Email/SMS', pattern: /postscript|postscript\.io/i },
+  { name: 'Omnisend', category: 'Email/SMS', pattern: /omnisend/i },
+  { name: 'Mailchimp', category: 'Email/SMS', pattern: /mailchimp|mc\.us\d+\.list-manage/i },
+  // Reviews / UGC
+  { name: 'Yotpo', category: 'Reviews', pattern: /yotpo/i },
+  { name: 'Okendo', category: 'Reviews', pattern: /okendo/i },
+  { name: 'Stamped', category: 'Reviews', pattern: /stamped\.io/i },
+  { name: 'Judge.me', category: 'Reviews', pattern: /judge\.me|judgeme/i },
+  { name: 'Loox', category: 'Reviews', pattern: /loox\.io|loox/i },
+  // Subscriptions
+  { name: 'Recharge', category: 'Subscriptions', pattern: /rechargecdn|rechargepayments|recharge\.com/i },
+  { name: 'Skio', category: 'Subscriptions', pattern: /skio\.com|skio/i },
+  { name: 'Loop Subscriptions', category: 'Subscriptions', pattern: /loopwork|loop-subscriptions/i },
+  // Personalization / CRO
+  { name: 'Rebuy', category: 'Personalization', pattern: /rebuyengine|rebuy/i },
+  { name: 'Nosto', category: 'Personalization', pattern: /nosto/i },
+  // Helpdesk
+  { name: 'Gorgias', category: 'Helpdesk', pattern: /gorgias/i },
+  { name: 'Zendesk', category: 'Helpdesk', pattern: /zendesk|zdassets/i },
+  { name: 'Intercom', category: 'Helpdesk', pattern: /intercom\.io|intercomcdn/i },
+  // Returns
+  { name: 'Loop Returns', category: 'Returns', pattern: /loopreturns/i },
+  { name: 'Returnly', category: 'Returns', pattern: /returnly/i },
+];
+
+function detectTechStack(html: string): DetectedTech[] {
+  const found: DetectedTech[] = [];
+  const seen = new Set<string>();
+  for (const fp of TECH_FINGERPRINTS) {
+    if (fp.pattern.test(html) && !seen.has(fp.name)) {
+      seen.add(fp.name);
+      found.push({ name: fp.name, category: fp.category });
+    }
+  }
+  return found;
 }
 
 function decodeEntities(s: string): string {
@@ -144,19 +210,75 @@ function detectWebsiteSignals(html: string): WebsiteSignals {
 const READER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+const DEFAULT_WEBSITE_ACTOR_ID = 'apify~website-content-crawler';
+
 /**
- * Fetch homepage HTML via the Jina reader proxy (r.jina.ai).
+ * Fetch homepage HTML via Apify's website-content-crawler.
  *
- * We do NOT fetch sites directly from Vercel — datacenter IPs get 403'd by
- * Shopify/Cloudflare bot protection. Jina fetches from its own infrastructure
- * and returns the raw HTML, which our parsers read. If Jina fails, the caller
- * skips website enrichment and continues scoring on Meta Ads signals.
+ * Apify fetches through its own proxy IPs, so it gets past the Shopify/
+ * Cloudflare 403s that block Vercel's datacenter IPs. We request the raw HTML
+ * (saveHtml) so our existing parsers work unchanged. If the dataset item has
+ * no html (some pages), we synthesise a minimal document from the metadata and
+ * text the actor extracted so the parsers still find title/description/signals.
  */
-async function fetchHomepageHtml(url: string): Promise<string> {
-  const proxyUrl = `https://r.jina.ai/${url}`;
-  const res = await fetch(proxyUrl, {
+async function fetchViaApify(url: string): Promise<string> {
+  const token = process.env.APIFY_TOKEN;
+  if (!token) throw new Error('APIFY_TOKEN not set');
+  const actorId = process.env.APIFY_WEBSITE_ACTOR_ID || DEFAULT_WEBSITE_ACTOR_ID;
+
+  const input = {
+    startUrls: [{ url }],
+    crawlerType: 'cheerio',
+    maxCrawlPages: 1,
+    maxCrawlDepth: 0,
+    saveHtml: true,
+    // Keep the original HTML (incl. <script> tags) so tech-stack fingerprints
+    // survive — the default transformer strips scripts during extraction.
+    htmlTransformer: 'none',
+    removeElementsCssSelector: '',
+    proxyConfiguration: { useApifyProxy: true },
+  };
+
+  const endpoint =
+    `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
+    `?token=${encodeURIComponent(token)}&timeout=60`;
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(70_000),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Apify website crawl failed (${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  const items = (await res.json()) as unknown;
+  const list = Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
+  const item = list.find((i) => typeof i.error !== 'string');
+  if (!item) throw new Error('Apify website crawl returned no usable page');
+
+  if (typeof item.html === 'string' && item.html.length > 0) {
+    return item.html;
+  }
+
+  // Synthesise a minimal document from the actor's extracted metadata + text.
+  const meta = (item.metadata ?? {}) as Record<string, unknown>;
+  const title = typeof meta.title === 'string' ? meta.title : '';
+  const description = typeof meta.description === 'string' ? meta.description : '';
+  const text = typeof item.text === 'string' ? item.text : '';
+  return `<!doctype html><html><head><title>${title}</title><meta name="description" content="${description.replace(
+    /"/g,
+    '&quot;'
+  )}"></head><body><h1>${title}</h1>${text}</body></html>`;
+}
+
+/** Fetch homepage HTML via the Jina reader proxy (r.jina.ai). */
+async function fetchViaJina(url: string): Promise<string> {
+  const res = await fetch(`https://r.jina.ai/${url}`, {
     headers: {
-      // Ask the reader to return raw HTML so our existing parsers work.
       'X-Return-Format': 'html',
       Accept: 'text/html,*/*;q=0.8',
       'User-Agent': READER_UA,
@@ -164,11 +286,26 @@ async function fetchHomepageHtml(url: string): Promise<string> {
     signal: AbortSignal.timeout(25_000),
     redirect: 'follow',
   });
-
-  if (!res.ok) {
-    throw new Error(`Jina reader fetch failed: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Jina reader fetch failed: ${res.status}`);
   return await res.text();
+}
+
+/**
+ * Fetch homepage HTML. Apify (proxy-backed) is the primary source; Jina is the
+ * fallback. We never fetch sites directly from Vercel — datacenter IPs get
+ * 403'd by Shopify/Cloudflare bot protection. If both fail, the caller skips
+ * website enrichment and continues scoring on Meta Ads signals.
+ */
+async function fetchHomepageHtml(url: string): Promise<string> {
+  try {
+    return await fetchViaApify(url);
+  } catch (err) {
+    logger.warn('Apify website crawl failed — falling back to Jina', {
+      url,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return await fetchViaJina(url);
+  }
 }
 
 export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult> {
@@ -187,6 +324,9 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
   const hero_headline = h1;
   const hero_subheadline = extractHeroSubheadline(html);
   const website_signals = detectWebsiteSignals(html);
+  // Tech stack needs the raw page code (script srcs, pixel snippets) — this is
+  // why we crawl via Apify rather than a markdown reader.
+  const tech_stack = detectTechStack(html);
 
   return {
     brand_context: {
@@ -199,6 +339,7 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
       hero_subheadline,
     },
     website_signals,
+    tech_stack,
   };
 }
 

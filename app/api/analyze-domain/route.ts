@@ -9,6 +9,7 @@ import {
   inferCampaignThemes,
   type BrandContext,
   type WebsiteSignals,
+  type DetectedTech,
 } from '@/lib/providers/crawlHomepage';
 import { generateNarrative } from '@/lib/providers/generateNarrative';
 
@@ -196,6 +197,7 @@ type RawResponse = {
   apify_raw?: unknown;
   brand_context?: BrandContext | null;
   website_signals?: WebsiteSignals | null;
+  tech_stack?: DetectedTech[] | null;
   landing_page_signals?: { campaign_themes: string[] } | null;
   growth_narrative?: string | null;
   growth_prompt?: string | null;
@@ -295,6 +297,7 @@ export async function POST(request: Request) {
         meta_ads: cachedMetaOut,
         brand_context: raw.brand_context ?? null,
         website_signals: raw.website_signals ?? null,
+        tech_stack: raw.tech_stack ?? null,
         landing_page_signals: raw.landing_page_signals ?? null,
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
@@ -357,6 +360,7 @@ export async function POST(request: Request) {
         meta,
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
+        tech_stack: crawlResult?.tech_stack ?? [],
         campaign_themes: campaignThemes,
       });
       growth_narrative = narrative.growth_narrative;
@@ -384,6 +388,7 @@ export async function POST(request: Request) {
         apify_raw: meta?.raw ?? null,
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
+        tech_stack: crawlResult?.tech_stack ?? null,
         landing_page_signals: landingPageSignals,
         crawl_error: crawlError,
         growth_narrative,
@@ -407,6 +412,7 @@ export async function POST(request: Request) {
       meta_ads: metaOut,
       brand_context: crawlResult?.brand_context ?? null,
       website_signals: crawlResult?.website_signals ?? null,
+      tech_stack: crawlResult?.tech_stack ?? null,
       landing_page_signals: landingPageSignals,
       crawl_error: crawlError,
       growth_narrative,

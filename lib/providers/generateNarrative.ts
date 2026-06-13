@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@/lib/utils/logger';
-import type { BrandContext, WebsiteSignals } from './crawlHomepage';
+import type { BrandContext, WebsiteSignals, DetectedTech } from './crawlHomepage';
 import type { MetaAdsSignals } from './apifyMetaAds';
 
 export interface NarrativeResult {
@@ -18,6 +18,7 @@ export interface NarrativeInput {
   meta: MetaAdsSignals | null;
   brand_context: BrandContext | null;
   website_signals: WebsiteSignals | null;
+  tech_stack: DetectedTech[];
   campaign_themes: string[];
 }
 
@@ -87,6 +88,12 @@ function buildContextBlock(input: NarrativeInput): string {
       lines.push('Website Signals:');
       signalLines.forEach((s) => lines.push(`  - ${s}`));
     }
+  }
+
+  if (input.tech_stack.length) {
+    lines.push('');
+    lines.push('Detected Tech Stack:');
+    input.tech_stack.forEach((t) => lines.push(`  - ${t.name} (${t.category})`));
   }
 
   if (input.campaign_themes.length) {
@@ -179,8 +186,25 @@ export function templateNarrative(input: NarrativeInput): string {
     sentences.push(`Scaling indicators include ${scaleBits.slice(0, 4).join(', ')}.`);
   }
 
-  // 4. GTM opportunity
-  if (ads >= 25 || landingPages >= 5) {
+  // 4. Tech stack — attribution tooling is the key displacement signal
+  const attribution = input.tech_stack.filter((t) => t.category === 'Attribution');
+  const adPixels = input.tech_stack.filter((t) => t.category === 'Ad Pixel').map((t) => t.name);
+  if (attribution.length) {
+    sentences.push(
+      `Their stack already includes ${attribution.map((t) => t.name).join(' and ')} for attribution${adPixels.length ? `, alongside ${adPixels.join(', ')}` : ''}.`
+    );
+  } else if (adPixels.length >= 2) {
+    sentences.push(
+      `They run ${adPixels.join(', ')} pixels but show no dedicated attribution platform in their stack.`
+    );
+  }
+
+  // 5. GTM opportunity
+  if (attribution.length) {
+    sentences.push(
+      `Since they already invest in measurement tooling, the opening is a displacement conversation around accuracy, incrementality, and consolidated reporting.`
+    );
+  } else if (ads >= 25 || landingPages >= 5) {
     sentences.push(
       `The combination of high creative volume and multiple landing pages points to growing attribution complexity and a likely need for stronger measurement and incrementality infrastructure.`
     );
