@@ -141,67 +141,32 @@ function detectWebsiteSignals(html: string): WebsiteSignals {
   };
 }
 
-const BROWSER_HEADERS: Record<string, string> = {
-  // Mimic a real Chrome browser — bot-named UAs get blocked by Shopify/Cloudflare.
-  'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  Accept:
-    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Upgrade-Insecure-Requests': '1',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-  'Sec-Fetch-Site': 'none',
-};
+const READER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 /**
- * Fetch homepage HTML, with a reader-proxy fallback.
+ * Fetch homepage HTML via the Jina reader proxy (r.jina.ai).
  *
- * Many DTC sites (Shopify behind Cloudflare) return 403 to serverless
- * datacenter IPs regardless of headers. When the direct fetch is blocked,
- * we retry through the Jina reader proxy (r.jina.ai), which fetches the page
- * from its own infrastructure and can return the raw HTML.
+ * We do NOT fetch sites directly from Vercel — datacenter IPs get 403'd by
+ * Shopify/Cloudflare bot protection. Jina fetches from its own infrastructure
+ * and returns the raw HTML, which our parsers read. If Jina fails, the caller
+ * skips website enrichment and continues scoring on Meta Ads signals.
  */
 async function fetchHomepageHtml(url: string): Promise<string> {
-  // 1) Direct fetch with realistic browser headers.
-  let directStatus: number | string = 'unknown';
-  try {
-    const res = await fetch(url, {
-      headers: BROWSER_HEADERS,
-      signal: AbortSignal.timeout(15_000),
-      redirect: 'follow',
-    });
-    if (res.ok) return await res.text();
-    directStatus = res.status;
-    logger.warn('Direct homepage fetch blocked — trying reader proxy', {
-      url,
-      status: res.status,
-    });
-  } catch (err) {
-    directStatus = err instanceof Error ? err.message : String(err);
-    logger.warn('Direct homepage fetch errored — trying reader proxy', {
-      url,
-      error: directStatus,
-    });
-  }
-
-  // 2) Reader-proxy fallback — returns the page HTML from a non-datacenter IP.
   const proxyUrl = `https://r.jina.ai/${url}`;
   const res = await fetch(proxyUrl, {
     headers: {
       // Ask the reader to return raw HTML so our existing parsers work.
       'X-Return-Format': 'html',
       Accept: 'text/html,*/*;q=0.8',
-      'User-Agent': BROWSER_HEADERS['User-Agent'],
+      'User-Agent': READER_UA,
     },
     signal: AbortSignal.timeout(25_000),
     redirect: 'follow',
   });
 
   if (!res.ok) {
-    throw new Error(
-      `Homepage fetch failed: direct=${directStatus}, reader=${res.status}`
-    );
+    throw new Error(`Jina reader fetch failed: ${res.status}`);
   }
   return await res.text();
 }
