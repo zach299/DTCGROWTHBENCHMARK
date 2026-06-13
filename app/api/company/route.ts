@@ -73,12 +73,32 @@ export async function POST(request: Request) {
     let analysis: Record<string, unknown> | null = null;
     let cacheAgeDays: number | null = null;
     let cacheFresh = false;
+    let metaRepaired = false;
+
+    // The bulk Meta signal is more reliable than a single live scrape (which can
+    // intermittently return 0). Use it to repair a cached/zero Meta count.
+    let storedMeta = 0;
+    {
+      const { data: sig } = await supabase
+        .from('company_meta_signals')
+        .select('active_meta_ads')
+        .eq('domain', company.domain)
+        .maybeSingle();
+      const n = Number(sig?.active_meta_ads ?? 0);
+      if (n > 0 && n < 13000) storedMeta = n;
+    }
 
     if (cached) {
       cacheAgeDays = (Date.now() - new Date(cached.created_at as string).getTime()) / 86_400_000;
       cacheFresh = cacheAgeDays <= CACHE_TTL_DAYS;
       const raw = (cached.raw_response ?? {}) as Record<string, unknown>;
-      const cachedMeta = (raw.meta_ads ?? null) as Record<string, unknown> | null;
+      let cachedMeta = (raw.meta_ads ?? null) as Record<string, unknown> | null;
+      // Repair a false 0 from the cached live scrape with the stored bulk count,
+      // and flag a background refresh so the narrative/ad-platforms heal too.
+      if (Number(cachedMeta?.active_ads_count ?? 0) === 0 && storedMeta > 0) {
+        cachedMeta = { ...(cachedMeta ?? {}), active_ads_count: storedMeta };
+        metaRepaired = true;
+      }
       const sales = (() => {
         const v = (company as Record<string, unknown>).estimated_yearly_sales;
         if (typeof v === 'number') return v;
@@ -148,8 +168,9 @@ export async function POST(request: Request) {
       timeline,
       cache_age_days: cacheAgeDays != null ? Math.round(cacheAgeDays * 10) / 10 : null,
       cache_fresh: cacheFresh,
-      // Client should trigger background enrichment when there's no fresh cache.
-      needs_enrichment: !cacheFresh,
+      // Trigger background enrichment when there's no fresh cache, or when we
+      // had to repair a stale zero (so the narrative/ad-platforms regenerate).
+      needs_enrichment: !cacheFresh || metaRepaired,
     });
   } catch (err) {
     logger.error('company lookup failed', {
