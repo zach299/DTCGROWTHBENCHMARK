@@ -12,17 +12,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <nav className="border-b border-gray-200 bg-white">
-          <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            <a href="/" className="font-bold text-gray-900">Growth Signals</a>
-            <div className="flex gap-6 text-sm text-gray-600">
-              <a href="/" className="hover:text-gray-900">Lookup</a>
-            </div>
-          </div>
-        </nav>
-        {children}
-      </body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

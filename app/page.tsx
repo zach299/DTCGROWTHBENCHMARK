@@ -36,6 +36,20 @@ interface LandingPageSignals {
   campaign_themes: string[];
 }
 
+interface AdPlatform {
+  platform: string;
+  status: string;
+  ads_count: number | null;
+  sample_ad_copy: string[];
+  sample_creatives: string[];
+  library_url: string | null;
+}
+
+interface DetectedTech {
+  name: string;
+  category: string;
+}
+
 interface AnalysisResult {
   domain: string;
   growth_score: number;
@@ -49,34 +63,113 @@ interface AnalysisResult {
   brand_context?: BrandContext | null;
   website_signals?: WebsiteSignals | null;
   landing_page_signals?: LandingPageSignals | null;
+  ad_platforms?: AdPlatform[] | null;
+  tech_stack?: DetectedTech[] | null;
+  server_side_signals?: string[] | null;
   growth_narrative?: string | null;
   growth_prompt?: string | null;
   cached: boolean;
   company?: Record<string, unknown>;
 }
 
-function activityBadge(level: string): string {
-  if (level === 'high') return 'bg-green-100 text-green-800';
-  if (level === 'medium') return 'bg-yellow-100 text-yellow-800';
-  if (level === 'low') return 'bg-orange-100 text-orange-800';
-  return 'bg-gray-100 text-gray-600';
-}
+const TECH_CATEGORY_ORDER = ['Ad Platform', 'Backend', 'Measurement', 'Lifecycle'];
+const TECH_CATEGORY_STYLE: Record<string, string> = {
+  'Ad Platform': 'bg-blue-50 text-blue-700 ring-blue-200',
+  Backend: 'bg-gray-100 text-gray-700 ring-gray-200',
+  Measurement: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  Lifecycle: 'bg-amber-50 text-amber-700 ring-amber-200',
+};
 
-function truncateUrl(url: string, max = 55): string {
-  const display = url.replace(/^https?:\/\/(www\.)?/, '');
-  return display.length > max ? display.slice(0, max) + '…' : display;
+// ---- helpers ----
+function parseNum(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(v.replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
 }
-
-function scoreColor(score: number): string {
-  if (score >= 70) return 'text-green-600';
-  if (score >= 40) return 'text-yellow-600';
+function cstr(c: Record<string, unknown> | undefined, key: string): string | null {
+  const v = c?.[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+function formatMoney(n: number): string {
+  if (n <= 0) return '—';
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(0)}M`;
+  return `$${Math.round(n / 1_000)}K`;
+}
+function scoreLabel(s: number): string {
+  if (s >= 85) return 'Excellent';
+  if (s >= 70) return 'Strong';
+  if (s >= 40) return 'Moderate';
+  return 'Low';
+}
+function scoreColor(s: number): string {
+  if (s >= 70) return 'text-green-600';
+  if (s >= 40) return 'text-yellow-600';
   return 'text-red-600';
 }
+function intensityLabel(signal: string): string {
+  if (signal === 'high') return 'Very High';
+  if (signal === 'medium') return 'High';
+  if (signal === 'low') return 'Moderate';
+  return 'Low';
+}
+function velocity(count: number): string {
+  if (count >= 100) return 'High';
+  if (count >= 25) return 'Medium';
+  if (count >= 1) return 'Low';
+  return 'None';
+}
+function diversity(n: number): string {
+  if (n >= 5) return 'High';
+  if (n >= 3) return 'Medium';
+  if (n >= 1) return 'Low';
+  return 'None';
+}
+function estSpend(salesYear: number): string {
+  // Rough heuristic: ~12% of revenue on paid media, monthly.
+  const monthly = (salesYear * 0.12) / 12;
+  if (monthly <= 0) return '—';
+  if (monthly < 10_000) return '< $10K';
+  if (monthly < 50_000) return '$10K – $50K';
+  if (monthly < 250_000) return '$50K – $250K';
+  if (monthly < 1_000_000) return '$250K – $1M';
+  if (monthly < 5_000_000) return '$1M – $5M';
+  return '$5M+';
+}
+function narrativeTags(r: AnalysisResult): string[] {
+  const tags: string[] = [];
+  const cat = (cstr(r.company, 'categories') ?? '').toLowerCase();
+  tags.push(cat.includes('business') ? 'B2B' : 'DTC Brand');
+  if (r.growth_score >= 70) tags.push('Scaling Stage');
+  const ads = r.meta_ads?.active_ads_count ?? 0;
+  if (ads >= 100) tags.push('High Ad Volume');
+  const themes = r.landing_page_signals?.campaign_themes.length ?? 0;
+  if (themes >= 4) tags.push('Product Expansion');
+  return tags.slice(0, 4);
+}
+function paidStatusBadge(status: string): string {
+  if (status === 'active') return 'bg-green-100 text-green-700';
+  if (status === 'none') return 'bg-gray-100 text-gray-500';
+  return 'bg-yellow-50 text-yellow-700';
+}
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+function truncateUrl(url: string, max = 48): string {
+  const d = url.replace(/^https?:\/\/(www\.)?/, '');
+  return d.length > max ? d.slice(0, max) + '…' : d;
+}
 
-function signalBadge(signal: string): string {
-  if (signal === 'high') return 'bg-green-100 text-green-800';
-  if (signal === 'medium') return 'bg-yellow-100 text-yellow-800';
-  return 'bg-red-100 text-red-800';
+function StatCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex-1 min-w-[150px] px-5 py-4">
+      <div className="text-xs font-medium text-gray-500 mb-1">{label}</div>
+      {children}
+    </div>
+  );
 }
 
 function SignalRow({ label, active, detail }: { label: string; active: boolean; detail?: string }) {
@@ -84,18 +177,34 @@ function SignalRow({ label, active, detail }: { label: string; active: boolean; 
     <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
       <span className="text-sm text-gray-700">{label}</span>
       <div className="flex items-center gap-2">
-        {detail && <span className="text-xs text-gray-400">{detail}</span>}
+        {detail && <span className="text-[11px] text-gray-400">{detail}</span>}
         <span
-          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'
+          className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+            active ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'bg-red-50 text-red-600 ring-1 ring-red-200'
           }`}
         >
-          {active ? 'YES' : 'NO'}
+          {active ? 'Yes' : 'No'}
         </span>
       </div>
     </div>
   );
 }
+
+function Card({ title, action, children }: { title?: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      {(title || action) && (
+        <div className="flex items-center justify-between mb-4">
+          {title && <h3 className="text-sm font-semibold text-gray-900">{title}</h3>}
+          {action}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+const NAV = ['Search', 'Dashboard', 'Watchlist', 'Reports', 'Credits'];
 
 export default function Home() {
   const [domain, setDomain] = useState('');
@@ -143,321 +252,480 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2500);
   }
 
+  const sales = parseNum(result?.company?.['estimated_yearly_sales']);
+  const followers = parseNum(result?.company?.['combined_followers']);
+  const metaCount = result?.meta_ads?.active_ads_count ?? 0;
+  const themes = result?.landing_page_signals?.campaign_themes ?? [];
+  const brandName = result?.meta_ads?.advertiser_name || result?.domain || '';
+  const techByCat = (cat: string) => (result?.tech_stack ?? []).filter((t) => t.category === cat);
+
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Growth Signals</h1>
-        <p className="text-gray-500 mb-8">
-          Analyze a DTC brand&apos;s growth potential from its domain.
-        </p>
-
-        <form onSubmit={analyze} className="flex gap-3 mb-8">
-          <input
-            type="text"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            placeholder="ridge.com"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={loading || !domain.trim()}
-            className="rounded-lg bg-blue-600 px-6 py-2.5 font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Analyzing…' : 'Analyze'}
-          </button>
-        </form>
-
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-            {error}
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar */}
+      <aside className="hidden md:flex w-56 shrink-0 flex-col bg-gray-900 text-gray-300 px-4 py-6">
+        <div className="flex items-center gap-2 px-2 mb-8">
+          <div className="h-7 w-7 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold">
+            ⚡
           </div>
-        )}
-
-        {result && (
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">{result.domain}</h2>
-              {result.cached && (
-                <span className="rounded-full bg-gray-200 px-3 py-1 text-xs font-medium text-gray-600">
-                  cached
-                </span>
-              )}
+          <span className="font-semibold text-white">Growth Signals</span>
+        </div>
+        <nav className="space-y-1">
+          {NAV.map((item, i) => (
+            <div
+              key={item}
+              className={`rounded-lg px-3 py-2 text-sm ${
+                i === 0 ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {item}
             </div>
+          ))}
+        </nav>
+        <div className="mt-auto pt-6 text-xs text-gray-500">
+          Northbeam GTM Intelligence
+        </div>
+      </aside>
 
-            {/* Score cards */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="text-sm text-gray-500 mb-1">Growth Score</div>
-                <div className={`text-5xl font-bold ${scoreColor(result.growth_score)}`}>
-                  {result.growth_score}
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="text-sm text-gray-500 mb-1">Northbeam Fit</div>
-                <div className={`text-5xl font-bold ${scoreColor(result.northbeam_fit_score)}`}>
-                  {result.northbeam_fit_score}
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="text-sm text-gray-500 mb-2">Paid Media Signal</div>
-                <span
-                  className={`inline-block rounded-full px-3 py-1 text-sm font-semibold uppercase ${signalBadge(result.paid_media_signal)}`}
-                >
-                  {result.paid_media_signal}
-                </span>
-              </div>
+      {/* Main */}
+      <main className="flex-1 min-w-0">
+        {/* Top bar */}
+        <div className="border-b border-gray-200 bg-white px-6 py-3 sticky top-0 z-10">
+          <form onSubmit={analyze} className="flex items-center gap-3 max-w-2xl">
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+              <input
+                type="text"
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+                placeholder="ridge.com"
+                className="w-full rounded-lg border border-gray-300 bg-gray-50 pl-9 pr-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
             </div>
+            <button
+              type="submit"
+              disabled={loading || !domain.trim()}
+              className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {loading ? 'Analyzing…' : 'Analyze'}
+            </button>
+          </form>
+        </div>
 
-            {/* Brand Context */}
-            {result.brand_context && (
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Brand Context</h3>
-                <div className="space-y-3">
-                  {result.brand_context.seo_title && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
-                        Title
-                      </div>
-                      <div className="text-sm text-gray-900">{result.brand_context.seo_title}</div>
-                    </div>
-                  )}
-                  {(result.brand_context.meta_description || result.brand_context.og_description) && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
-                        Description
-                      </div>
-                      <div className="text-sm text-gray-700">
-                        {result.brand_context.meta_description ||
-                          result.brand_context.og_description}
-                      </div>
-                    </div>
-                  )}
-                  {result.brand_context.hero_headline && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
-                        Hero Headline
-                      </div>
-                      <div className="text-sm font-semibold text-gray-900">
-                        {result.brand_context.hero_headline}
-                      </div>
-                    </div>
-                  )}
-                  {result.brand_context.hero_subheadline && (
-                    <div>
-                      <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
-                        Hero Subheadline
-                      </div>
-                      <div className="text-sm text-gray-700">
-                        {result.brand_context.hero_subheadline}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+        <div className="px-6 py-6 max-w-6xl mx-auto">
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 mb-6">
+              {error}
+            </div>
+          )}
 
-            {/* Meta Ads */}
-            {result.meta_ads ? (
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Meta Ads</h3>
-                <div className="flex flex-wrap items-center gap-6 mb-4">
-                  <div>
-                    <div className="text-sm text-gray-500 mb-1">Active Ads</div>
-                    <div className="text-4xl font-bold text-gray-900">
-                      {result.meta_ads.active_ads_count}
-                    </div>
+          {loading && !result && (
+            <div className="text-center text-gray-400 py-24">Analyzing {domain}…</div>
+          )}
+
+          {result && (
+            <div className="space-y-6">
+              {/* Brand header */}
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-14 w-14 rounded-full bg-gray-900 text-white flex items-center justify-center text-lg font-bold uppercase">
+                    {brandName.slice(0, 2)}
                   </div>
                   <div>
-                    <div className="text-sm text-gray-500 mb-2">Ad Activity Level</div>
-                    <span
-                      className={`inline-block rounded-full px-3 py-1 text-sm font-semibold uppercase ${activityBadge(result.meta_ads.ad_activity_level)}`}
-                    >
-                      {result.meta_ads.ad_activity_level}
-                    </span>
-                  </div>
-                  {result.meta_ads.platforms.length > 0 && (
-                    <div>
-                      <div className="text-sm text-gray-500 mb-2">Platforms</div>
-                      <div className="flex flex-wrap gap-2">
-                        {result.meta_ads.platforms.map((p) => (
-                          <span
-                            key={p}
-                            className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800 capitalize"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-2xl font-bold text-gray-900">{brandName}</h1>
+                      {result.cached && (
+                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-500">
+                          cached
+                        </span>
+                      )}
                     </div>
-                  )}
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <span>{result.domain}</span>
+                      {cstr(result.company, 'platform') && (
+                        <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200">
+                          {cstr(result.company, 'platform')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-
-                {/* Campaign Themes */}
-                {result.landing_page_signals?.campaign_themes &&
-                  result.landing_page_signals.campaign_themes.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                        Top Campaign Themes
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {result.landing_page_signals.campaign_themes.map((theme) => (
-                          <span
-                            key={theme}
-                            className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-800"
-                          >
-                            {theme}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {result.meta_ads.unique_landing_pages.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Top Landing Pages</h4>
-                    <ul className="space-y-1">
-                      {result.meta_ads.unique_landing_pages.slice(0, 10).map((url, i) => (
-                        <li key={i}>
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:text-blue-800 break-all"
-                          >
-                            {truncateUrl(url)}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {result.meta_ads.sample_ad_copy.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Sample Ad Copy</h4>
-                    <div className="space-y-2">
-                      {result.meta_ads.sample_ad_copy.slice(0, 3).map((copy, i) => (
-                        <blockquote
-                          key={i}
-                          className="rounded-lg border-l-4 border-blue-200 bg-gray-50 px-4 py-2 text-sm text-gray-700 italic"
-                        >
-                          {copy}
-                        </blockquote>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              !result.cached && (
-                <p className="text-sm text-gray-400">No Meta Ad Library data available</p>
-              )
-            )}
-
-            {/* Website Signals */}
-            {result.website_signals && (
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Website Signals</h3>
-                <SignalRow label="Subscription / Subscribe-and-Save" active={result.website_signals.subscription} />
-                <SignalRow label="Affiliate / Ambassador Program" active={result.website_signals.affiliate_program} />
-                <SignalRow label="Retail / Wholesale Presence" active={result.website_signals.retail_presence} />
-                <SignalRow label="International / Multi-currency" active={result.website_signals.international} />
-                <SignalRow
-                  label="Careers Page Active"
-                  active={result.website_signals.careers_active}
-                  detail={
-                    result.website_signals.careers_roles.length
-                      ? result.website_signals.careers_roles.join(', ')
-                      : undefined
-                  }
-                />
-              </div>
-            )}
-
-            {/* Growth Narrative */}
-            {result.growth_narrative && (
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-indigo-700 mb-3">Growth Narrative</h3>
-                <p className="text-gray-800 leading-relaxed">{result.growth_narrative}</p>
-              </div>
-            )}
-
-            {/* Reasons */}
-            {Array.isArray(result.reasons) && result.reasons.length > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Signal Summary</h3>
-                <ul className="space-y-2">
-                  {result.reasons.map((r, i) => (
-                    <li key={i} className="flex items-start gap-2 text-gray-700">
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
-                      {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* GTM cards */}
-            <div className="grid grid-cols-1 gap-4">
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">Recommended Buyer</h3>
-                <p className="text-gray-900">{result.recommended_buyer}</p>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">Recommended Angle</h3>
-                <p className="text-gray-900">{result.recommended_angle}</p>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-700 mb-1">Outbound Hook</h3>
-                <p className="text-gray-900">{result.outbound_hook}</p>
-              </div>
-            </div>
-
-            {/* Growth Prompt */}
-            {result.growth_prompt && (
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-700">Growth Prompt</h3>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`https://${result.domain.replace(/^https?:\/\//, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    ↗ Visit Website
+                  </a>
                   <button
                     onClick={copyPrompt}
-                    className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-                      copied
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                      copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                     }`}
                   >
-                    {copied ? '✓ Copied!' : 'Copy Prompt'}
+                    {copied ? '✓ Copied' : '✦ Outreach Prompt'}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mb-3">
-                  Paste this into Claude or ChatGPT to generate outbound emails, LinkedIn messages,
-                  discovery hypotheses, and GTM angles.
-                </p>
-                <pre className="overflow-x-auto rounded-lg bg-gray-50 border border-gray-200 p-4 text-xs text-gray-700 whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
-                  {result.growth_prompt}
-                </pre>
               </div>
-            )}
 
-            {/* Raw JSON toggle */}
-            <div>
-              <button
-                onClick={() => setShowRaw((s) => !s)}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800"
-              >
-                {showRaw ? 'Hide raw JSON' : 'Show raw JSON'}
-              </button>
-              {showRaw && (
-                <pre className="mt-3 overflow-x-auto rounded-xl bg-gray-900 p-4 text-xs text-gray-100">
-                  {JSON.stringify(result, null, 2)}
-                </pre>
-              )}
+              {/* Stat row */}
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-wrap divide-x divide-gray-100">
+                <StatCard label="Growth Score">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-3xl font-bold ${scoreColor(result.growth_score)}`}>
+                      {result.growth_score}
+                    </span>
+                    <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                      {scoreLabel(result.growth_score)}
+                    </span>
+                  </div>
+                </StatCard>
+                <StatCard label="Paid Media Intensity">
+                  <div className="text-2xl font-bold text-gray-900">
+                    {intensityLabel(result.paid_media_signal)}
+                  </div>
+                </StatCard>
+                <StatCard label="Est. Yearly Revenue">
+                  <div className="text-2xl font-bold text-gray-900">{formatMoney(sales)}</div>
+                </StatCard>
+                <StatCard label="Active Meta Ads">
+                  <div className="text-3xl font-bold text-gray-900">{metaCount}</div>
+                </StatCard>
+                <StatCard label="Northbeam Fit">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-3xl font-bold ${scoreColor(result.northbeam_fit_score)}`}>
+                      {result.northbeam_fit_score}
+                    </span>
+                    <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                      {scoreLabel(result.northbeam_fit_score)} Fit
+                    </span>
+                  </div>
+                </StatCard>
+              </div>
+
+              {/* Two-column grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* LEFT (2 cols) */}
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Growth Narrative */}
+                  {result.growth_narrative && (
+                    <Card
+                      title="✦ Growth Narrative"
+                      action={
+                        <button
+                          onClick={copyPrompt}
+                          className="text-xs text-gray-500 hover:text-gray-700 rounded-md border border-gray-200 px-2.5 py-1"
+                        >
+                          {copied ? '✓ Copied' : '⧉ Copy'}
+                        </button>
+                      }
+                    >
+                      <p className="text-gray-800 leading-relaxed">{result.growth_narrative}</p>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {narrativeTags(result).map((t) => (
+                          <span
+                            key={t}
+                            className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Paid Media Overview */}
+                  {result.meta_ads && (
+                    <Card title="Paid Media Overview">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Active Ads</div>
+                          <div className="text-2xl font-bold text-gray-900">{metaCount}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Landing Pages</div>
+                          <div className="text-2xl font-bold text-gray-900">
+                            {result.meta_ads.unique_landing_pages.length}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Creative Velocity</div>
+                          <div className="text-lg font-semibold text-gray-900">{velocity(metaCount)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Campaign Diversity</div>
+                          <div className="text-lg font-semibold text-gray-900">{diversity(themes.length)}</div>
+                        </div>
+                      </div>
+
+                      {/* Themes + landing pages */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        {themes.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Top Campaign Themes
+                            </h4>
+                            <ul className="space-y-1.5">
+                              {themes.slice(0, 6).map((t) => (
+                                <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                                  {t}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {result.meta_ads.unique_landing_pages.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Top Landing Pages
+                            </h4>
+                            <ol className="space-y-1.5">
+                              {result.meta_ads.unique_landing_pages.slice(0, 6).map((u, i) => (
+                                <li key={i} className="flex items-baseline gap-2 text-sm">
+                                  <span className="text-gray-400 text-xs">{i + 1}</span>
+                                  <a
+                                    href={u}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-600 hover:text-indigo-800 break-all"
+                                  >
+                                    {truncateUrl(u)}
+                                  </a>
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Recent Ad Creatives */}
+                  {result.meta_ads && result.meta_ads.sample_creatives.length > 0 && (
+                    <Card title="Recent Ad Creatives">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {result.meta_ads.sample_creatives.slice(0, 6).map((src, i) => (
+                          <div key={i} className="rounded-lg border border-gray-200 overflow-hidden">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={src}
+                              alt="ad creative"
+                              referrerPolicy="no-referrer"
+                              className="w-full h-32 object-cover bg-gray-100"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="p-2">
+                              <p className="text-[11px] text-gray-600 leading-snug">
+                                {truncate(result.meta_ads?.sample_ad_copy[i] ?? '', 90)}
+                              </p>
+                              <div className="flex items-center gap-1 mt-1.5 text-[11px] text-green-600">
+                                <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Active
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                </div>
+
+                {/* RIGHT (1 col) */}
+                <div className="space-y-6">
+                  {/* Ad Platforms */}
+                  {result.ad_platforms && result.ad_platforms.length > 0 && (
+                    <Card title="Ad Platforms">
+                      <div className="space-y-2">
+                        {result.ad_platforms.map((p) => (
+                          <div
+                            key={p.platform}
+                            className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
+                          >
+                            <span className="text-sm font-medium text-gray-800">{p.platform}</span>
+                            <div className="flex items-center gap-2">
+                              {p.status !== 'unknown' && (
+                                <span className="text-sm font-semibold text-gray-900">{p.ads_count ?? 0}</span>
+                              )}
+                              <span
+                                className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${paidStatusBadge(p.status)}`}
+                              >
+                                {p.status === 'active' ? 'Active' : p.status === 'none' ? 'None' : '—'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Company Snapshot */}
+                  <Card title="Company Snapshot">
+                    <dl className="space-y-2.5 text-sm">
+                      {cstr(result.company, 'platform') && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Platform</dt>
+                          <dd className="text-gray-900 font-medium">{cstr(result.company, 'platform')}</dd>
+                        </div>
+                      )}
+                      {cstr(result.company, 'company_location') && (
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-gray-500">Location</dt>
+                          <dd className="text-gray-900 font-medium text-right">
+                            {cstr(result.company, 'company_location')}
+                          </dd>
+                        </div>
+                      )}
+                      {cstr(result.company, 'categories') && (
+                        <div className="flex justify-between gap-4">
+                          <dt className="text-gray-500">Categories</dt>
+                          <dd className="text-gray-900 font-medium text-right">
+                            {cstr(result.company, 'categories')?.replace(/^\//, '').replace(/\//g, ' / ')}
+                          </dd>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <dt className="text-gray-500">Est. Revenue</dt>
+                        <dd className="text-gray-900 font-medium">{formatMoney(sales)}</dd>
+                      </div>
+                      {followers > 0 && (
+                        <div className="flex justify-between">
+                          <dt className="text-gray-500">Social Followers</dt>
+                          <dd className="text-gray-900 font-medium">{followers.toLocaleString()}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </Card>
+
+                  {/* Key Signals */}
+                  {result.website_signals && (
+                    <Card title="Key Signals">
+                      <SignalRow label="Subscription Model" active={result.website_signals.subscription} />
+                      <SignalRow label="Affiliate Program" active={result.website_signals.affiliate_program} />
+                      <SignalRow label="International Shipping" active={result.website_signals.international} />
+                      <SignalRow label="Retail Presence" active={result.website_signals.retail_presence} />
+                      <SignalRow
+                        label="Careers / Hiring"
+                        active={result.website_signals.careers_active}
+                        detail={
+                          result.website_signals.careers_roles.length
+                            ? result.website_signals.careers_roles.slice(0, 2).join(', ')
+                            : undefined
+                        }
+                      />
+                    </Card>
+                  )}
+
+                  {/* Estimated Paid Media Spend */}
+                  {sales > 0 && (
+                    <Card title="Est. Paid Media Spend">
+                      <div className="text-2xl font-bold text-gray-900">{estSpend(sales)}</div>
+                      <div className="text-xs text-gray-400">per month</div>
+                      <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                        Modeled from estimated revenue and ad activity. Directional only.
+                      </p>
+                    </Card>
+                  )}
+
+                  {/* Tech Stack */}
+                  {result.tech_stack && result.tech_stack.length > 0 && (
+                    <Card title="Tech Stack">
+                      <div className="space-y-3">
+                        {TECH_CATEGORY_ORDER.map((cat) => {
+                          const items = techByCat(cat);
+                          if (items.length === 0) return null;
+                          return (
+                            <div key={cat}>
+                              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                                {cat}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {items.map((t) => (
+                                  <span
+                                    key={t.name}
+                                    className={`rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ${
+                                      TECH_CATEGORY_STYLE[cat] ?? 'bg-gray-100 text-gray-700 ring-gray-200'
+                                    }`}
+                                  >
+                                    {t.name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {result.server_side_signals && result.server_side_signals.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                            Server-Side / CAPI
+                          </div>
+                          <ul className="space-y-1">
+                            {result.server_side_signals.map((s, i) => (
+                              <li key={i} className="text-[11px] text-gray-600 leading-snug">
+                                • {s}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* Recommendations */}
+                  <Card title="Recommendations">
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-0.5">Ideal Buyer</div>
+                        <div className="text-gray-900 font-medium">{result.recommended_buyer}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500 mb-0.5">Best Angle</div>
+                        <div className="text-gray-900 font-medium">{result.recommended_angle}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-500 mb-0.5">Outbound Hook</div>
+                        <div className="text-gray-700">{result.outbound_hook}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={copyPrompt}
+                      className={`mt-4 w-full rounded-lg px-4 py-2.5 text-sm font-medium ${
+                        copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                      }`}
+                    >
+                      {copied ? '✓ Prompt copied to clipboard' : '✦ Generate Outreach Prompt'}
+                    </button>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Raw JSON */}
+              <div>
+                <button
+                  onClick={() => setShowRaw((s) => !s)}
+                  className="text-sm font-medium text-gray-500 hover:text-gray-700"
+                >
+                  {showRaw ? 'Hide raw JSON' : 'Show raw JSON'}
+                </button>
+                {showRaw && (
+                  <pre className="mt-3 overflow-x-auto rounded-xl bg-gray-900 p-4 text-xs text-gray-100">
+                    {JSON.stringify(result, null, 2)}
+                  </pre>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-    </main>
+          )}
+
+          {!result && !loading && !error && (
+            <div className="text-center text-gray-400 py-24">
+              Enter a domain above to generate a GTM intelligence report.
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
