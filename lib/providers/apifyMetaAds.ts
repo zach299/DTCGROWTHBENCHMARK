@@ -169,7 +169,7 @@ export async function fetchMetaAdsSignals(
     // Step 2: page-scoped query — only this advertiser's ads.
     const pageUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&view_all_page_id=${pageId}&search_type=page`;
     logger.info('Apify Meta Ads: page-scoped query', { pageId, name });
-    scopedItems = await runActor(pageUrl, 50);
+    scopedItems = await runActor(pageUrl, 20);
     if (scopedItems.length === 0) scopedItems = searchItems;
   } else {
     // Could not identify the brand's page among search results; fall back to
