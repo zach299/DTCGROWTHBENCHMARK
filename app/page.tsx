@@ -1114,7 +1114,9 @@ export default function Home() {
                       )}
                       <div className="flex justify-between">
                         <dt className="text-gray-500">Est. Revenue</dt>
-                        <dd className="text-gray-900 font-medium">{formatMoney(sales)}</dd>
+                        <dd className="text-gray-900 font-medium">
+                          {result.revenue_range ?? formatMoney(sales)}
+                        </dd>
                       </div>
                       {followers > 0 && (
                         <div className="flex justify-between">
