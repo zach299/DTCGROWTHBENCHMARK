@@ -28,6 +28,8 @@ export interface HomepageCrawlResult {
   brand_context: BrandContext;
   website_signals: WebsiteSignals;
   tech_stack: DetectedTech[];
+  crawl_source: string; // debug: 'apify-html' | 'apify-synth' | 'jina'
+  crawl_html_len: number; // debug: length of HTML we parsed
 }
 
 // Fingerprints matched against the raw page HTML (script srcs, pixel snippets,
@@ -221,7 +223,12 @@ const DEFAULT_WEBSITE_ACTOR_ID = 'apify~website-content-crawler';
  * no html (some pages), we synthesise a minimal document from the metadata and
  * text the actor extracted so the parsers still find title/description/signals.
  */
-async function fetchViaApify(url: string): Promise<string> {
+interface FetchedHtml {
+  html: string;
+  source: string; // debug: which path produced the HTML
+}
+
+async function fetchViaApify(url: string): Promise<FetchedHtml> {
   const token = process.env.APIFY_TOKEN;
   if (!token) throw new Error('APIFY_TOKEN not set');
   const actorId = process.env.APIFY_WEBSITE_ACTOR_ID || DEFAULT_WEBSITE_ACTOR_ID;
@@ -241,13 +248,13 @@ async function fetchViaApify(url: string): Promise<string> {
 
   const endpoint =
     `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
-    `?token=${encodeURIComponent(token)}&timeout=60`;
+    `?token=${encodeURIComponent(token)}&timeout=90`;
 
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
-    signal: AbortSignal.timeout(70_000),
+    signal: AbortSignal.timeout(100_000),
   });
 
   if (!res.ok) {
@@ -260,23 +267,35 @@ async function fetchViaApify(url: string): Promise<string> {
   const item = list.find((i) => typeof i.error !== 'string');
   if (!item) throw new Error('Apify website crawl returned no usable page');
 
-  if (typeof item.html === 'string' && item.html.length > 0) {
-    return item.html;
+  // The actor may store raw HTML under several keys depending on version/config.
+  const htmlField =
+    [item.html, item.htmlContent, item.body, item.pageHtml].find(
+      (v) => typeof v === 'string' && (v as string).length > 0
+    ) as string | undefined;
+
+  if (htmlField) {
+    return { html: htmlField, source: 'apify-html' };
   }
 
-  // Synthesise a minimal document from the actor's extracted metadata + text.
+  // No raw HTML returned — synthesise from metadata + text so we at least get
+  // brand context (tech-stack/signals will be limited).
   const meta = (item.metadata ?? {}) as Record<string, unknown>;
   const title = typeof meta.title === 'string' ? meta.title : '';
   const description = typeof meta.description === 'string' ? meta.description : '';
   const text = typeof item.text === 'string' ? item.text : '';
-  return `<!doctype html><html><head><title>${title}</title><meta name="description" content="${description.replace(
+  const synth = `<!doctype html><html><head><title>${title}</title><meta name="description" content="${description.replace(
     /"/g,
     '&quot;'
   )}"></head><body><h1>${title}</h1>${text}</body></html>`;
+  logger.warn('Apify returned no raw HTML — used synth doc', {
+    url,
+    itemKeys: Object.keys(item).join(','),
+  });
+  return { html: synth, source: 'apify-synth' };
 }
 
 /** Fetch homepage HTML via the Jina reader proxy (r.jina.ai). */
-async function fetchViaJina(url: string): Promise<string> {
+async function fetchViaJina(url: string): Promise<FetchedHtml> {
   const res = await fetch(`https://r.jina.ai/${url}`, {
     headers: {
       'X-Return-Format': 'html',
@@ -287,7 +306,7 @@ async function fetchViaJina(url: string): Promise<string> {
     redirect: 'follow',
   });
   if (!res.ok) throw new Error(`Jina reader fetch failed: ${res.status}`);
-  return await res.text();
+  return { html: await res.text(), source: 'jina' };
 }
 
 /**
@@ -296,7 +315,7 @@ async function fetchViaJina(url: string): Promise<string> {
  * 403'd by Shopify/Cloudflare bot protection. If both fail, the caller skips
  * website enrichment and continues scoring on Meta Ads signals.
  */
-async function fetchHomepageHtml(url: string): Promise<string> {
+async function fetchHomepageHtml(url: string): Promise<FetchedHtml> {
   try {
     return await fetchViaApify(url);
   } catch (err) {
@@ -313,8 +332,8 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
   logger.info('Crawling homepage', { url });
 
   // Limit parse to first 200KB — meta/hero content is always in the <head> and early <body>
-  const fullHtml = await fetchHomepageHtml(url);
-  const html = fullHtml.slice(0, 200_000);
+  const fetched = await fetchHomepageHtml(url);
+  const html = fetched.html.slice(0, 200_000);
 
   const seo_title = extractTitle(html);
   const meta_description = extractMetaContent(html, 'description', 'name');
@@ -340,6 +359,8 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
     },
     website_signals,
     tech_stack,
+    crawl_source: fetched.source,
+    crawl_html_len: html.length,
   };
 }
 
