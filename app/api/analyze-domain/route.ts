@@ -11,15 +11,24 @@ const bodySchema = z.object({
 interface MasterRow {
   id: number;
   domain: string;
-  average_product_price: number | null;
+  average_product_price: string | null;
   categories: string | null;
-  combined_followers: number | null;
+  // Stored as text in master_database, e.g. "54500"
+  combined_followers: string | null;
   company_location: string | null;
-  estimated_yearly_sales: number | null;
+  // Stored as text, e.g. "USD $127,836,522.84"
+  estimated_yearly_sales: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
   platform: string | null;
   tiktok_url: string | null;
+}
+
+function parseNumeric(value: string | null): number {
+  if (!value) return 0;
+  const cleaned = value.replace(/[^0-9.]/g, '');
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function clamp(n: number, min = 0, max = 100): number {
@@ -28,8 +37,8 @@ function clamp(n: number, min = 0, max = 100): number {
 
 // TODO: replace placeholder scoring with Claude + enrichment signals
 function placeholderScore(company: MasterRow) {
-  const followers = company.combined_followers ?? 0;
-  const sales = company.estimated_yearly_sales ?? 0;
+  const followers = parseNumeric(company.combined_followers);
+  const sales = parseNumeric(company.estimated_yearly_sales);
 
   let score = 0;
   const reasons: string[] = [];
