@@ -629,66 +629,66 @@ function BulkView() {
   async function runBatch() {
     if (running) return;
     setRunning(true);
-    setProg({ total: 0, processed: 0, ok: 0, failed: 0 });
-    try {
-      const tRes = await fetch('/api/bulk-targets', {
+    const target = batchSize; // total to enrich this session (auto-chained)
+    setProg({ total: target, processed: 0, ok: 0, failed: 0 });
+
+    const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const { job_id } = await jobRes.json();
+    let processed = 0, ok = 0, failed = 0;
+    const CHUNK = 250;
+
+    const updateJob = (done = false) =>
+      fetch('/api/bulk-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: batchSize }),
+        body: JSON.stringify({ job_id, domains_processed: processed, domains_successful: ok, domains_failed: failed, estimated_cost: Math.round(processed * COST_PER_DOMAIN * 100) / 100, done }),
       });
-      const { targets } = await tRes.json();
-      if (!targets?.length) {
-        setRunning(false);
-        return;
-      }
-      const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      const { job_id } = await jobRes.json();
 
-      let processed = 0, ok = 0, failed = 0;
-      setProg({ total: targets.length, processed, ok, failed });
-
-      // Concurrency 3, driven by this tab.
-      let idx = 0;
-      const worker = async () => {
-        while (idx < targets.length) {
-          const t = targets[idx++];
-          try {
-            const res = await fetch('/api/enrich-meta', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(t),
-            });
-            const d = await res.json();
-            if (d.ok) ok += 1;
-            else failed += 1;
-          } catch {
-            failed += 1;
-          }
-          processed += 1;
-          setProg({ total: targets.length, processed, ok, failed });
-          if (processed % 10 === 0 && job_id) {
-            fetch('/api/bulk-job', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ job_id, domains_processed: processed, domains_successful: ok, domains_failed: failed, estimated_cost: Math.round(processed * COST_PER_DOMAIN * 100) / 100 }),
-            });
-            loadStats(); // keep the stat cards live during the run
-          }
-        }
-      };
-      await Promise.all([worker(), worker(), worker()]);
-
-      if (job_id) {
-        await fetch('/api/bulk-job', {
+    try {
+      // Auto-chain: each chunk's enriched domains are skipped on the next pull,
+      // so we keep grabbing the next un-enriched stores until the target is hit
+      // (or there are none left).
+      while (processed < target) {
+        const want = Math.min(CHUNK, target - processed);
+        const tRes = await fetch('/api/bulk-targets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ job_id, domains_processed: processed, domains_successful: ok, domains_failed: failed, estimated_cost: Math.round(processed * COST_PER_DOMAIN * 100) / 100, done: true }),
+          body: JSON.stringify({ limit: want }),
         });
+        const { targets } = await tRes.json();
+        if (!targets?.length) break; // nothing left to enrich
+
+        let idx = 0;
+        const worker = async () => {
+          while (idx < targets.length) {
+            const t = targets[idx++];
+            try {
+              const res = await fetch('/api/enrich-meta', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(t),
+              });
+              const d = await res.json();
+              if (d.ok) ok += 1;
+              else failed += 1;
+            } catch {
+              failed += 1;
+            }
+            processed += 1;
+            setProg({ total: target, processed, ok, failed });
+            if (processed % 10 === 0) {
+              updateJob();
+              loadStats();
+            }
+          }
+        };
+        await Promise.all([worker(), worker(), worker()]);
       }
-      await loadStats();
     } catch {
       /* noop */
     } finally {
+      await updateJob(true);
+      await loadStats();
       setRunning(false);
     }
   }
@@ -706,13 +706,13 @@ function BulkView() {
       <Card title="Run a Batch (Meta only)">
         <div className="flex flex-wrap items-end gap-4">
           <div>
-            <div className="text-xs text-gray-500 mb-1">Batch size</div>
+            <div className="text-xs text-gray-500 mb-1">Number to enrich</div>
             <input
               type="number"
               min={1}
-              max={1000}
+              max={20000}
               value={batchSize}
-              onChange={(e) => setBatchSize(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))}
+              onChange={(e) => setBatchSize(Math.max(1, Math.min(20000, Number(e.target.value) || 1)))}
               disabled={running}
               className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
@@ -722,10 +722,22 @@ function BulkView() {
             disabled={running}
             className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {running ? 'Running…' : '▶ Run Batch'}
+            {running ? 'Running…' : '▶ Run'}
           </button>
+          <div className="flex gap-1">
+            {[1000, 5000, 10000].map((n) => (
+              <button
+                key={n}
+                onClick={() => setBatchSize(n)}
+                disabled={running}
+                className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              >
+                {n.toLocaleString()}
+              </button>
+            ))}
+          </div>
           <span className="text-xs text-gray-400">
-            ~${(batchSize * COST_PER_DOMAIN).toFixed(0)} est · concurrency 3 · skips anything enriched in 30d
+            ~${(batchSize * COST_PER_DOMAIN).toFixed(0)} est · auto-chains in 250s · concurrency 3 · skips anything enriched in 30d
           </span>
         </div>
         {(running || prog.processed > 0) && (
