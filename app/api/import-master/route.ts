@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
+import { normalizeDomain } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 
 // Accepts one chunk of CSV rows from the browser and upserts them into
@@ -31,8 +32,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Expected { rows: [...] } (max 1000)' }, { status: 400 });
   }
 
-  // Keep only allowed columns; drop rows without a domain.
-  const clean: Record<string, unknown>[] = [];
+  // Keep only allowed columns; normalize the domain (strip protocol/www/path)
+  // so different forms of the same site collapse to one row; drop blanks.
+  // De-dupe within this batch too, so a single upsert can't hit the same domain
+  // twice (Postgres rejects that).
+  const byDomain = new Map<string, Record<string, unknown>>();
   let skipped = 0;
   for (const raw of parsed.data.rows) {
     const rec: Record<string, unknown> = {};
@@ -40,9 +44,12 @@ export async function POST(request: Request) {
       const v = raw[col];
       rec[col] = v === '' || v === undefined ? null : v;
     }
-    if (!rec.domain) { skipped++; continue; }
-    clean.push(rec);
+    const domain = typeof rec.domain === 'string' ? normalizeDomain(rec.domain) : '';
+    if (!domain) { skipped++; continue; }
+    rec.domain = domain;
+    byDomain.set(domain, rec); // last write wins within the batch
   }
+  const clean = [...byDomain.values()];
   if (clean.length === 0) {
     return NextResponse.json({ upserted: 0, skipped });
   }
