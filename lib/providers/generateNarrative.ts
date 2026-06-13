@@ -186,16 +186,22 @@ export function templateNarrative(input: NarrativeInput): string {
     sentences.push(`Scaling indicators include ${scaleBits.slice(0, 4).join(', ')}.`);
   }
 
-  // 4. Tech stack — attribution tooling is the key displacement signal
-  const attribution = input.tech_stack.filter((t) => t.category === 'Attribution');
-  const adPixels = input.tech_stack.filter((t) => t.category === 'Ad Pixel').map((t) => t.name);
+  // 4. Tech stack — dedicated measurement tooling is the displacement signal
+  // (GA4 / GTM are baseline and don't count toward "already invests in MMM").
+  const BASELINE = new Set(['GA4', 'Google Tag Manager']);
+  const attribution = input.tech_stack.filter(
+    (t) => t.category === 'Measurement' && !BASELINE.has(t.name)
+  );
+  const adPlatforms = input.tech_stack
+    .filter((t) => t.category === 'Ad Platform')
+    .map((t) => t.name);
   if (attribution.length) {
     sentences.push(
-      `Their stack already includes ${attribution.map((t) => t.name).join(' and ')} for attribution${adPixels.length ? `, alongside ${adPixels.join(', ')}` : ''}.`
+      `Their stack already includes ${attribution.map((t) => t.name).join(' and ')} for measurement${adPlatforms.length ? `, running on ${adPlatforms.slice(0, 5).join(', ')}` : ''}.`
     );
-  } else if (adPixels.length >= 2) {
+  } else if (adPlatforms.length >= 2) {
     sentences.push(
-      `They run ${adPixels.join(', ')} pixels but show no dedicated attribution platform in their stack.`
+      `They advertise across ${adPlatforms.slice(0, 5).join(', ')} but show no dedicated measurement platform in their stack.`
     );
   }
 

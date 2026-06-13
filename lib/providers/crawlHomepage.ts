@@ -33,52 +33,70 @@ export interface HomepageCrawlResult {
   crawl_note: string | null; // debug: failed-primary error, if any
 }
 
+// Category display/priority order. detectTechStack returns matches grouped in
+// this order so the most GTM-relevant stacks surface first.
+export const TECH_CATEGORY_ORDER = [
+  'Ad Platform',
+  'Backend',
+  'Measurement',
+  'Lifecycle',
+] as const;
+
 // Fingerprints matched against the raw page HTML (script srcs, pixel snippets,
-// CDN domains, global vars). Ordered roughly by GTM relevance.
+// CDN domains, global vars).
 const TECH_FINGERPRINTS: { name: string; category: string; pattern: RegExp }[] = [
-  // Attribution / analytics — highest GTM relevance for Northbeam
-  { name: 'Northbeam', category: 'Attribution', pattern: /northbeam/i },
-  { name: 'Triple Whale', category: 'Attribution', pattern: /triplewhale|triple-whale|tw-pixel/i },
-  { name: 'Elevar', category: 'Attribution', pattern: /elevar|getelevar/i },
-  { name: 'Rockerbox', category: 'Attribution', pattern: /rockerbox/i },
-  { name: 'Google Analytics', category: 'Analytics', pattern: /google-analytics\.com|gtag\(|googletagmanager\.com\/gtag/i },
-  { name: 'Google Tag Manager', category: 'Analytics', pattern: /googletagmanager\.com\/gtm/i },
-  // Ad pixels — paid channel signals
-  { name: 'Meta Pixel', category: 'Ad Pixel', pattern: /connect\.facebook\.net|fbevents\.js|fbq\(/i },
-  { name: 'TikTok Pixel', category: 'Ad Pixel', pattern: /analytics\.tiktok\.com|ttq\.load|ttq\.track/i },
-  { name: 'Google Ads', category: 'Ad Pixel', pattern: /googleadservices\.com|google_conversion|aw-\d/i },
-  { name: 'Pinterest Tag', category: 'Ad Pixel', pattern: /pintrk\(|s\.pinimg\.com/i },
-  { name: 'Snapchat Pixel', category: 'Ad Pixel', pattern: /snaptr\(|sc-static\.net/i },
-  // Platform
-  { name: 'Shopify', category: 'Platform', pattern: /cdn\.shopify\.com|shopify\.com|myshopify\.com|Shopify\./i },
-  { name: 'WooCommerce', category: 'Platform', pattern: /woocommerce/i },
-  { name: 'BigCommerce', category: 'Platform', pattern: /bigcommerce/i },
-  // Email / SMS — lifecycle stack
-  { name: 'Klaviyo', category: 'Email/SMS', pattern: /klaviyo/i },
-  { name: 'Attentive', category: 'Email/SMS', pattern: /attentive|attentivemobile/i },
-  { name: 'Postscript', category: 'Email/SMS', pattern: /postscript|postscript\.io/i },
-  { name: 'Omnisend', category: 'Email/SMS', pattern: /omnisend/i },
-  { name: 'Mailchimp', category: 'Email/SMS', pattern: /mailchimp|mc\.us\d+\.list-manage/i },
-  // Reviews / UGC
-  { name: 'Yotpo', category: 'Reviews', pattern: /yotpo/i },
-  { name: 'Okendo', category: 'Reviews', pattern: /okendo/i },
-  { name: 'Stamped', category: 'Reviews', pattern: /stamped\.io/i },
-  { name: 'Judge.me', category: 'Reviews', pattern: /judge\.me|judgeme/i },
-  { name: 'Loox', category: 'Reviews', pattern: /loox\.io|loox/i },
-  // Subscriptions
-  { name: 'Recharge', category: 'Subscriptions', pattern: /rechargecdn|rechargepayments|recharge\.com/i },
-  { name: 'Skio', category: 'Subscriptions', pattern: /skio\.com|skio/i },
-  { name: 'Loop Subscriptions', category: 'Subscriptions', pattern: /loopwork|loop-subscriptions/i },
-  // Personalization / CRO
-  { name: 'Rebuy', category: 'Personalization', pattern: /rebuyengine|rebuy/i },
-  { name: 'Nosto', category: 'Personalization', pattern: /nosto/i },
-  // Helpdesk
-  { name: 'Gorgias', category: 'Helpdesk', pattern: /gorgias/i },
-  { name: 'Zendesk', category: 'Helpdesk', pattern: /zendesk|zdassets/i },
-  { name: 'Intercom', category: 'Helpdesk', pattern: /intercom\.io|intercomcdn/i },
-  // Returns
-  { name: 'Loop Returns', category: 'Returns', pattern: /loopreturns/i },
-  { name: 'Returnly', category: 'Returns', pattern: /returnly/i },
+  // --- 1. Ad Platforms (which paid channels they actually run) ---
+  { name: 'Meta', category: 'Ad Platform', pattern: /connect\.facebook\.net|fbevents\.js|fbq\(/i },
+  { name: 'Google Ads', category: 'Ad Platform', pattern: /googleadservices\.com|googlesyndication\.com|google_conversion|gtag\/js\?id=AW-|\bAW-\d{8,}/i },
+  { name: 'TikTok', category: 'Ad Platform', pattern: /analytics\.tiktok\.com|ttq\.load|ttq\.track/i },
+  { name: 'Pinterest', category: 'Ad Platform', pattern: /pintrk\(|s\.pinimg\.com|ct\.pinterest\.com/i },
+  { name: 'Snapchat', category: 'Ad Platform', pattern: /snaptr\(|sc-static\.net|tr\.snapchat\.com/i },
+  { name: 'Reddit', category: 'Ad Platform', pattern: /redditstatic\.com\/ads|rdt\(|pixel\.reddit/i },
+  { name: 'X (Twitter)', category: 'Ad Platform', pattern: /static\.ads-twitter\.com|twq\(|analytics\.twitter\.com/i },
+  { name: 'The Trade Desk', category: 'Ad Platform', pattern: /adsrvr\.org|thetradedesk/i },
+  { name: 'StackAdapt', category: 'Ad Platform', pattern: /stackadapt/i },
+  { name: 'MNTN', category: 'Ad Platform', pattern: /mntn\.com|getmntn|mntn\.ai/i },
+  { name: 'Vibe', category: 'Ad Platform', pattern: /vibe\.co|getvibe/i },
+  { name: 'AdRoll', category: 'Ad Platform', pattern: /adroll\.com|adroll/i },
+
+  // --- 2. Backend (commerce platform + CRM) ---
+  { name: 'Shopify', category: 'Backend', pattern: /cdn\.shopify\.com|myshopify\.com|Shopify\.theme|shopify/i },
+  { name: 'WooCommerce', category: 'Backend', pattern: /woocommerce/i },
+  { name: 'BigCommerce', category: 'Backend', pattern: /bigcommerce/i },
+  { name: 'Magento', category: 'Backend', pattern: /magento|mage\/|static\/version.*\/frontend/i },
+  { name: 'Salesforce Commerce', category: 'Backend', pattern: /demandware|salesforce commerce|\bsfcc\b/i },
+  { name: 'Wix', category: 'Backend', pattern: /wixstatic|parastorage/i },
+  { name: 'Squarespace', category: 'Backend', pattern: /squarespace/i },
+  { name: 'HubSpot', category: 'Backend', pattern: /js\.hs-scripts\.com|hs-analytics|hsforms|hubspot/i },
+  { name: 'Salesforce / Pardot', category: 'Backend', pattern: /pardot|pi\.pardot|sfdcstatic|force\.com/i },
+
+  // --- 3. Measurement Stack (attribution / analytics) ---
+  { name: 'Northbeam', category: 'Measurement', pattern: /northbeam/i },
+  { name: 'Triple Whale', category: 'Measurement', pattern: /triplewhale|triple-whale|gettriplewhale/i },
+  { name: 'WorkMagic', category: 'Measurement', pattern: /workmagic/i },
+  { name: 'Haus', category: 'Measurement', pattern: /haus\.io|gethaus/i },
+  { name: 'Rockerbox', category: 'Measurement', pattern: /rockerbox/i },
+  { name: 'Elevar', category: 'Measurement', pattern: /elevar|getelevar/i },
+  { name: 'Blotout', category: 'Measurement', pattern: /blotout/i },
+  { name: 'HYROS', category: 'Measurement', pattern: /hyros/i },
+  { name: 'Measured', category: 'Measurement', pattern: /measured\.com/i },
+  { name: 'Wicked Reports', category: 'Measurement', pattern: /wickedreports/i },
+  { name: 'GA4', category: 'Measurement', pattern: /google-analytics\.com\/g\/collect|gtag\(['"]config['"],\s*['"]G-|\bG-[A-Z0-9]{8,}\b/i },
+  { name: 'Google Tag Manager', category: 'Measurement', pattern: /googletagmanager\.com\/gtm|\bGTM-[A-Z0-9]+\b/i },
+
+  // --- 4. Lifecycle Stack (email / SMS / retention — top tools) ---
+  { name: 'Klaviyo', category: 'Lifecycle', pattern: /klaviyo/i },
+  { name: 'Attentive', category: 'Lifecycle', pattern: /attentive|attentivemobile/i },
+  { name: 'Postscript', category: 'Lifecycle', pattern: /postscript\.io|postscript/i },
+  { name: 'Omnisend', category: 'Lifecycle', pattern: /omnisend/i },
+  { name: 'Mailchimp', category: 'Lifecycle', pattern: /mailchimp|list-manage\.com/i },
+  { name: 'Sendlane', category: 'Lifecycle', pattern: /sendlane/i },
+  { name: 'Drip', category: 'Lifecycle', pattern: /getdrip|drip\.com/i },
+  { name: 'Iterable', category: 'Lifecycle', pattern: /iterable/i },
+  { name: 'Braze', category: 'Lifecycle', pattern: /braze\.com|appboy/i },
+  { name: 'Listrak', category: 'Lifecycle', pattern: /listrak/i },
+  { name: 'Customer.io', category: 'Lifecycle', pattern: /customer\.io/i },
+  { name: 'Yotpo SMS', category: 'Lifecycle', pattern: /smsbump|yotpo.{0,20}sms/i },
 ];
 
 function detectTechStack(html: string): DetectedTech[] {
@@ -90,7 +108,13 @@ function detectTechStack(html: string): DetectedTech[] {
       found.push({ name: fp.name, category: fp.category });
     }
   }
-  return found;
+  // Stable sort into the priority category order (fingerprints are already in
+  // that order, but this guards against future reordering).
+  const order = (c: string) => {
+    const i = TECH_CATEGORY_ORDER.indexOf(c as (typeof TECH_CATEGORY_ORDER)[number]);
+    return i === -1 ? TECH_CATEGORY_ORDER.length : i;
+  };
+  return found.sort((a, b) => order(a.category) - order(b.category));
 }
 
 function decodeEntities(s: string): string {
