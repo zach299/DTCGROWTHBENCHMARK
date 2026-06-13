@@ -87,7 +87,9 @@ function mapAds(platform: AdPlatformName, list: Record<string, unknown>[], libra
       asString(it.creativeUrl) ??
       asString(it.thumbnail) ??
       asString(it.image) ??
-      asString(get(it, ['creative', 'url']));
+      asString(get(it, ['creative', 'url'])) ??
+      asString(it.adUrl) ?? // Google Transparency: link to the ad creative
+      asString(it.adLink);
     if (img && creatives.length < 5 && !creatives.includes(img)) creatives.push(img);
   }
 
@@ -128,17 +130,10 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
   const actorId = process.env.APIFY_GOOGLE_ADS_ACTOR_ID;
   if (!actorId) return unknownResult('Google', libraryUrl, 'APIFY_GOOGLE_ADS_ACTOR_ID not set');
   try {
-    // Pass several common input keys so most actors accept at least one.
-    // region "" = all regions (SolidCode actor enum: "", "US", "CA", ...).
+    // SolidCode actor: searches by `searchQuery` (domain or brand name).
     const list = await runActorJson(actorId, {
-      domain,
-      domains: [domain],
-      url: libraryUrl,
-      startUrls: [{ url: libraryUrl }],
-      region: '',
-      maxItems: 20,
-      maxResults: 20,
-      maxNumberOfAds: 20,
+      searchQuery: domain,
+      maxResults: 100,
     });
     logger.info('Google ads fetched', { domain, items: list.length });
     const result = mapAds('Google', list, libraryUrl);
