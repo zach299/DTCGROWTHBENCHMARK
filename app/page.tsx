@@ -355,9 +355,10 @@ const NAV: { label: string; view: View }[] = [
   { label: 'Search', view: 'search' },
   { label: 'Watchlist', view: 'watchlist' },
   { label: 'Top Movers', view: 'movers' },
+  { label: 'Bulk Enrichment', view: 'bulk' },
 ];
 
-type View = 'search' | 'watchlist' | 'movers';
+type View = 'search' | 'watchlist' | 'movers' | 'bulk';
 
 interface WatchlistItem {
   id: number;
@@ -517,6 +518,84 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
             ))}
           </div>
         </Card>
+      )}
+    </div>
+  );
+}
+
+interface BulkStats {
+  total_domains: number;
+  enriched: number;
+  remaining: number;
+  success_rate: number | null;
+  estimated_cost: number;
+  last_run: string | null;
+  avg_active_ads: number;
+  avg_landing_pages: number;
+  pct_with_ads: number;
+}
+
+function BulkView() {
+  const [s, setS] = useState<BulkStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/bulk-stats');
+        setS(await r.json());
+      } catch {
+        setS(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+  const fmtNum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString());
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Bulk Enrichment</h1>
+      <p className="text-sm text-gray-500 -mt-3">
+        Meta intelligence dataset across the top Shopify stores. Built by the offline bulk
+        enrichment job.
+      </p>
+      {loading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : !s ? (
+        <Card><p className="text-sm text-gray-400">Could not load stats.</p></Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {[
+              ['Total Shopify Domains', fmtNum(s.total_domains)],
+              ['Enriched', fmtNum(s.enriched)],
+              ['Remaining', fmtNum(s.remaining)],
+              ['Success Rate', s.success_rate == null ? '—' : `${s.success_rate}%`],
+              ['Estimated Cost', `$${Number(s.estimated_cost ?? 0).toFixed(2)}`],
+              ['Last Run', s.last_run ? new Date(s.last_run).toLocaleString() : '—'],
+            ].map(([label, val]) => (
+              <Card key={label}>
+                <div className="text-xs text-gray-500 mb-1">{label}</div>
+                <div className="text-2xl font-bold text-gray-900">{val}</div>
+              </Card>
+            ))}
+          </div>
+          <Card title="Dataset Quality">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-gray-900">{fmtNum(s.avg_active_ads)}</div>
+                <div className="text-xs text-gray-500">Avg active Meta ads</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-gray-900">{s.avg_landing_pages ?? '—'}</div>
+                <div className="text-xs text-gray-500">Avg landing pages</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-gray-900">{s.pct_with_ads ?? '—'}%</div>
+                <div className="text-xs text-gray-500">Running Meta ads</div>
+              </div>
+            </div>
+          </Card>
+        </>
       )}
     </div>
   );
@@ -715,6 +794,7 @@ export default function Home() {
         <div className="px-6 py-6 max-w-6xl mx-auto">
           {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
           {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}
+          {view === 'bulk' && <BulkView />}
           {view === 'search' && (
           <>
           {error && (
