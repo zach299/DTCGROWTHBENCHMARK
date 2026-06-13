@@ -17,6 +17,55 @@ import {
   fetchLinkedInAds,
   type AdPlatformResult,
 } from '@/lib/providers/adLibraries';
+import { writeSnapshot, getTrends, type SnapshotMetrics } from '@/lib/trends';
+
+// Cache TTL: ad data (Meta/Google/LinkedIn) is considered fresh for 7 days.
+const CACHE_TTL_DAYS = 7;
+
+function velocityLabel(count: number): string {
+  if (count >= 100) return 'High';
+  if (count >= 25) return 'Medium';
+  if (count >= 1) return 'Low';
+  return 'None';
+}
+function diversityLabel(n: number): string {
+  if (n >= 5) return 'High';
+  if (n >= 3) return 'Medium';
+  if (n >= 1) return 'Low';
+  return 'None';
+}
+
+// Build snapshot metrics + persist a daily snapshot, then compute trends.
+async function snapshotAndTrends(
+  supabase: ReturnType<typeof createServiceClient>,
+  domain: string,
+  vals: {
+    active_meta_ads: number;
+    landing_pages_count: number;
+    estimated_revenue: number;
+    growth_score: number;
+    northbeam_fit: number;
+    paid_media_intensity: string;
+  },
+  rawMeta: unknown
+) {
+  const metrics: SnapshotMetrics = {
+    active_meta_ads: vals.active_meta_ads,
+    landing_pages_count: vals.landing_pages_count,
+    estimated_revenue: vals.estimated_revenue,
+    growth_score: vals.growth_score,
+    northbeam_fit: vals.northbeam_fit,
+    paid_media_intensity: vals.paid_media_intensity,
+    creative_velocity: velocityLabel(vals.active_meta_ads),
+    campaign_diversity: diversityLabel(vals.landing_pages_count),
+  };
+  await writeSnapshot(supabase, domain, metrics, rawMeta);
+  return getTrends(supabase, domain, {
+    active_meta_ads: vals.active_meta_ads,
+    landing_pages_count: vals.landing_pages_count,
+    growth_score: vals.growth_score,
+  });
+}
 
 // Apify run-sync can take up to ~2 minutes; allow generous function duration.
 // Note: Vercel hobby plan caps maxDuration lower (60s) — this takes effect on Pro+.
@@ -281,7 +330,14 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
 
-    if (cached) {
+    const cacheAgeDays = cached?.created_at
+      ? (Date.now() - new Date(cached.created_at).getTime()) / 86_400_000
+      : Infinity;
+    const cacheFresh = Boolean(cached) && cacheAgeDays <= CACHE_TTL_DAYS;
+
+    // Serve a fresh cache hit immediately (fast path). Stale cache falls through
+    // to re-enrichment below so ad data refreshes on the 7-day TTL.
+    if (cached && cacheFresh) {
       const raw = (cached.raw_response ?? {}) as RawResponse;
       const cachedMeta = raw.meta_ads ?? null;
       let cachedMetaOut: Record<string, unknown> | null = null;
@@ -294,6 +350,23 @@ export async function POST(request: Request) {
             (count >= 50 ? 'high' : count >= 10 ? 'medium' : count >= 1 ? 'low' : 'none'),
         };
       }
+
+      const trends = await snapshotAndTrends(
+        supabase,
+        company.domain,
+        {
+          active_meta_ads: Number(cachedMeta?.active_ads_count ?? 0),
+          landing_pages_count: Array.isArray(cachedMeta?.unique_landing_pages)
+            ? (cachedMeta!.unique_landing_pages as unknown[]).length
+            : 0,
+          estimated_revenue: parseNumeric(company.estimated_yearly_sales),
+          growth_score: Number(cached.growth_score ?? 0),
+          northbeam_fit: Number(cached.northbeam_fit_score ?? 0),
+          paid_media_intensity: String(cached.paid_media_signal ?? 'low'),
+        },
+        raw.apify_raw ?? null
+      );
+
       return NextResponse.json({
         domain: company.domain,
         growth_score: cached.growth_score,
@@ -312,6 +385,8 @@ export async function POST(request: Request) {
         landing_page_signals: raw.landing_page_signals ?? null,
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
+        trends,
+        cache_age_days: Math.round(cacheAgeDays * 10) / 10,
         cached: true,
         company,
       });
@@ -471,6 +546,21 @@ export async function POST(request: Request) {
       logger.error('Failed to insert domain analysis', { error: insertError.message });
     }
 
+    // Persist a daily snapshot and compute historical trends.
+    const trends = await snapshotAndTrends(
+      supabase,
+      company.domain,
+      {
+        active_meta_ads: meta?.active_ads_count ?? 0,
+        landing_pages_count: meta?.unique_landing_pages.length ?? 0,
+        estimated_revenue: parseNumeric(company.estimated_yearly_sales),
+        growth_score: analysis.growth_score,
+        northbeam_fit: analysis.northbeam_fit_score,
+        paid_media_intensity: analysis.paid_media_signal,
+      },
+      meta?.raw ?? null
+    );
+
     return NextResponse.json({
       domain: company.domain,
       growth_score: analysis.growth_score,
@@ -493,6 +583,7 @@ export async function POST(request: Request) {
       crawl_note: crawlResult?.crawl_note ?? null,
       growth_narrative,
       growth_prompt,
+      trends,
       cached: false,
       company,
     });

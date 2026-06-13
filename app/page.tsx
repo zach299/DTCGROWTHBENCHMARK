@@ -50,15 +50,30 @@ interface DetectedTech {
   category: string;
 }
 
+interface TrendValue {
+  window_days: number;
+  current: number;
+  previous: number | null;
+  change_pct: number | null;
+  direction: 'up' | 'down' | 'flat' | null;
+  label: string;
+}
+
+interface Trends {
+  active_meta_ads: TrendValue[];
+  growth_score: TrendValue;
+  landing_pages: TrendValue;
+}
+
 interface AnalysisResult {
   domain: string;
-  growth_score: number;
-  northbeam_fit_score: number;
-  paid_media_signal: string;
-  recommended_buyer: string;
-  recommended_angle: string;
-  outbound_hook: string;
-  reasons: string[];
+  growth_score?: number;
+  northbeam_fit_score?: number;
+  paid_media_signal?: string;
+  recommended_buyer?: string;
+  recommended_angle?: string;
+  outbound_hook?: string;
+  reasons?: string[];
   meta_ads?: MetaAds | null;
   brand_context?: BrandContext | null;
   website_signals?: WebsiteSignals | null;
@@ -68,7 +83,9 @@ interface AnalysisResult {
   server_side_signals?: string[] | null;
   growth_narrative?: string | null;
   growth_prompt?: string | null;
-  cached: boolean;
+  trends?: Trends | null;
+  cached?: boolean;
+  enriching?: boolean;
   company?: Record<string, unknown>;
 }
 
@@ -143,7 +160,7 @@ function narrativeTags(r: AnalysisResult): string[] {
   const tags: string[] = [];
   const cat = (cstr(r.company, 'categories') ?? '').toLowerCase();
   tags.push(cat.includes('business') ? 'B2B' : 'DTC Brand');
-  if (r.growth_score >= 70) tags.push('Scaling Stage');
+  if ((r.growth_score ?? 0) >= 70) tags.push('Scaling Stage');
   const ads = r.meta_ads?.active_ads_count ?? 0;
   if (ads >= 100) tags.push('High Ad Volume');
   const themes = r.landing_page_signals?.campaign_themes.length ?? 0;
@@ -161,6 +178,38 @@ function truncate(s: string, max: number): string {
 function truncateUrl(url: string, max = 48): string {
   const d = url.replace(/^https?:\/\/(www\.)?/, '');
   return d.length > max ? d.slice(0, max) + '…' : d;
+}
+
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
+}
+
+function trendArrow(d: TrendValue['direction']): string {
+  if (d === 'up') return '↑';
+  if (d === 'down') return '↓';
+  if (d === 'flat') return '→';
+  return '';
+}
+function trendColor(d: TrendValue['direction']): string {
+  if (d === 'up') return 'text-green-600';
+  if (d === 'down') return 'text-red-600';
+  return 'text-gray-400';
+}
+
+function TrendStat({ label, value, trend }: { label: string; value: number; trend?: TrendValue }) {
+  return (
+    <div className="flex-1 min-w-[120px]">
+      <div className="text-xs text-gray-500 mb-1">{label}</div>
+      <div className="text-2xl font-bold text-gray-900">{value}</div>
+      {trend && trend.change_pct != null ? (
+        <div className={`text-xs font-medium ${trendColor(trend.direction)}`}>
+          {trendArrow(trend.direction)} {trend.label}
+        </div>
+      ) : (
+        <div className="text-xs text-gray-400">tracking…</div>
+      )}
+    </div>
+  );
 }
 
 function StatCard({ label, children }: { label: string; children: React.ReactNode }) {
@@ -217,30 +266,61 @@ export default function Home() {
   async function analyze(e: React.FormEvent) {
     e.preventDefault();
     if (!domain.trim() || loading) return;
+    const q = domain.trim();
     setLoading(true);
     setError(null);
     setResult(null);
     setShowRaw(false);
     setCopied(false);
     try {
-      const res = await fetch('/api/analyze-domain', {
+      // Phase 1: instant company + cached analysis (+ trends).
+      const res = await fetch('/api/company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain: domain.trim() }),
+        body: JSON.stringify({ domain: q }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(
           res.status === 404
-            ? `"${data.domain ?? domain}" was not found in the database.`
+            ? `"${data.domain ?? q}" was not found in the database.`
             : data.error || 'Something went wrong.'
         );
         return;
       }
-      setResult(data);
+
+      const base: AnalysisResult = {
+        domain: data.domain,
+        company: data.company,
+        trends: data.trends ?? null,
+        cached: Boolean(data.analysis),
+        enriching: Boolean(data.needs_enrichment),
+        ...(data.analysis ?? {}),
+      };
+      setResult(base);
+      setLoading(false);
+
+      // Phase 2: background enrichment when cache is missing/stale.
+      if (data.needs_enrichment) {
+        try {
+          const enrichRes = await fetch('/api/analyze-domain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: q }),
+          });
+          const fresh = await enrichRes.json();
+          if (enrichRes.ok) {
+            setResult({ ...fresh, enriching: false });
+          } else {
+            // keep phase-1 view; just stop the enriching indicator
+            setResult((r) => (r ? { ...r, enriching: false } : r));
+          }
+        } catch {
+          setResult((r) => (r ? { ...r, enriching: false } : r));
+        }
+      }
     } catch {
       setError('Network error — please try again.');
-    } finally {
       setLoading(false);
     }
   }
@@ -258,6 +338,10 @@ export default function Home() {
   const themes = result?.landing_page_signals?.campaign_themes ?? [];
   const brandName = result?.meta_ads?.advertiser_name || result?.domain || '';
   const techByCat = (cat: string) => (result?.tech_stack ?? []).filter((t) => t.category === cat);
+  const hasAnalysis = result?.growth_score != null;
+  const enriching = Boolean(result?.enriching);
+  const gScore = result?.growth_score ?? 0;
+  const nScore = result?.northbeam_fit_score ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -333,7 +417,13 @@ export default function Home() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h1 className="text-2xl font-bold text-gray-900">{brandName}</h1>
-                      {result.cached && (
+                      {enriching && (
+                        <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
+                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                          enriching…
+                        </span>
+                      )}
+                      {!enriching && result.cached && (
                         <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-500">
                           cached
                         </span>
@@ -372,37 +462,90 @@ export default function Home() {
               {/* Stat row */}
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-wrap divide-x divide-gray-100">
                 <StatCard label="Growth Score">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-3xl font-bold ${scoreColor(result.growth_score)}`}>
-                      {result.growth_score}
-                    </span>
-                    <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                      {scoreLabel(result.growth_score)}
-                    </span>
-                  </div>
+                  {hasAnalysis ? (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-3xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
+                      <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                        {scoreLabel(gScore)}
+                      </span>
+                    </div>
+                  ) : (
+                    <Skeleton className="h-9 w-16" />
+                  )}
                 </StatCard>
                 <StatCard label="Paid Media Intensity">
-                  <div className="text-2xl font-bold text-gray-900">
-                    {intensityLabel(result.paid_media_signal)}
-                  </div>
+                  {hasAnalysis ? (
+                    <div className="text-2xl font-bold text-gray-900">
+                      {intensityLabel(result.paid_media_signal ?? '')}
+                    </div>
+                  ) : (
+                    <Skeleton className="h-8 w-24" />
+                  )}
                 </StatCard>
                 <StatCard label="Est. Yearly Revenue">
                   <div className="text-2xl font-bold text-gray-900">{formatMoney(sales)}</div>
                 </StatCard>
                 <StatCard label="Active Meta Ads">
-                  <div className="text-3xl font-bold text-gray-900">{metaCount}</div>
+                  {hasAnalysis || result.meta_ads ? (
+                    <div className="text-3xl font-bold text-gray-900">{metaCount}</div>
+                  ) : (
+                    <Skeleton className="h-9 w-12" />
+                  )}
                 </StatCard>
                 <StatCard label="Northbeam Fit">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-3xl font-bold ${scoreColor(result.northbeam_fit_score)}`}>
-                      {result.northbeam_fit_score}
-                    </span>
-                    <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                      {scoreLabel(result.northbeam_fit_score)} Fit
-                    </span>
-                  </div>
+                  {hasAnalysis ? (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-3xl font-bold ${scoreColor(nScore)}`}>{nScore}</span>
+                      <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                        {scoreLabel(nScore)} Fit
+                      </span>
+                    </div>
+                  ) : (
+                    <Skeleton className="h-9 w-16" />
+                  )}
                 </StatCard>
               </div>
+
+              {/* Growth Trends */}
+              {result.trends && (
+                <Card title="Growth Trends">
+                  <div className="flex flex-wrap gap-6">
+                    <TrendStat
+                      label="Active Ads"
+                      value={result.trends.active_meta_ads[1]?.current ?? metaCount}
+                      trend={result.trends.active_meta_ads[1]}
+                    />
+                    <TrendStat
+                      label="Growth Score"
+                      value={result.trends.growth_score.current ?? gScore}
+                      trend={result.trends.growth_score}
+                    />
+                    <TrendStat
+                      label="Landing Pages"
+                      value={result.trends.landing_pages.current}
+                      trend={result.trends.landing_pages}
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-3">
+                    Trends compound daily — the more often a domain is analyzed, the richer its history.
+                  </p>
+                </Card>
+              )}
+
+              {/* Enriching skeleton (first-time domains, before data arrives) */}
+              {enriching && !result.meta_ads && (
+                <Card title="Paid Media Overview">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div key={i}>
+                        <Skeleton className="h-3 w-16 mb-2" />
+                        <Skeleton className="h-7 w-12" />
+                      </div>
+                    ))}
+                  </div>
+                  <Skeleton className="h-3 w-40 mt-4" />
+                </Card>
+              )}
 
               {/* Two-column grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
