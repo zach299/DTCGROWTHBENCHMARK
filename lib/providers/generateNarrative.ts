@@ -8,7 +8,7 @@ export interface NarrativeResult {
   growth_prompt: string;
 }
 
-interface NarrativeInput {
+export interface NarrativeInput {
   domain: string;
   platform: string | null;
   categories: string | null;
@@ -104,18 +104,102 @@ const GROWTH_PROMPT_SUFFIX = `\n\nBased on the above information, generate:
 4. Likely business challenges
 5. Recommended GTM angle`;
 
-export async function generateNarrative(input: NarrativeInput): Promise<NarrativeResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set');
+function parseNumeric(value: string | null): number {
+  if (!value) return 0;
+  const n = parseFloat(value.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatMoney(n: number): string {
+  if (n <= 0) return '';
+  return n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1_000)}K`;
+}
+
+/**
+ * Deterministic, no-API narrative. Used when ANTHROPIC_API_KEY is unset or the
+ * API call fails, so the Growth Narrative section is never empty.
+ */
+export function templateNarrative(input: NarrativeInput): string {
+  const name =
+    input.meta?.advertiser_name ?? input.domain.replace(/\.(com|co|io|shop|store).*$/i, '');
+  const category = input.categories?.split(/[,;|/]/)[0]?.trim() || 'direct-to-consumer';
+  const ads = input.meta?.active_ads_count ?? 0;
+  const landingPages = input.meta?.unique_landing_pages.length ?? 0;
+  const sales = parseNumeric(input.estimated_yearly_sales);
+  const followers = parseNumeric(input.combined_followers);
+
+  const sentences: string[] = [];
+
+  // 1. What they sell + positioning
+  const positioning =
+    input.brand_context?.hero_subheadline ||
+    input.brand_context?.meta_description ||
+    input.brand_context?.hero_headline;
+  if (positioning) {
+    sentences.push(`${name} is a ${category} brand positioning itself around "${positioning.replace(/"/g, '').slice(0, 140)}".`);
+  } else {
+    sentences.push(`${name} is a ${category} brand.`);
   }
 
-  const client = new Anthropic({ apiKey });
+  // 2. Acquisition motion
+  if (ads >= 50) {
+    sentences.push(
+      `They appear to be running a sophisticated paid acquisition program, with roughly ${ads} active Meta ads${landingPages >= 5 ? ` across ${landingPages}+ dedicated landing pages` : ''}${input.campaign_themes.length ? ` spanning ${input.campaign_themes.slice(0, 3).join(', ').toLowerCase()}` : ''}.`
+    );
+  } else if (ads >= 10) {
+    sentences.push(
+      `They are actively investing in Meta advertising, with around ${ads} live ads${landingPages >= 3 ? ` and ${landingPages} distinct landing pages` : ''}, indicating a structured paid acquisition motion.`
+    );
+  } else if (ads >= 1) {
+    sentences.push(`They run a modest paid program with about ${ads} active Meta ad${ads === 1 ? '' : 's'}, suggesting paid social is an emerging rather than primary channel.`);
+  } else {
+    sentences.push(`No active Meta advertising was detected, suggesting customer acquisition leans on organic, retail, or other channels.`);
+  }
+
+  // 3. Scaling signals
+  const scaleBits: string[] = [];
+  if (sales > 0) scaleBits.push(`an estimated ${formatMoney(sales)} in yearly sales`);
+  if (followers > 0) scaleBits.push(`${followers.toLocaleString()} combined social followers`);
+  if (input.website_signals?.subscription) scaleBits.push('a subscription / subscribe-and-save offering');
+  if (input.website_signals?.affiliate_program) scaleBits.push('an affiliate or ambassador program');
+  if (input.website_signals?.retail_presence) scaleBits.push('retail / wholesale distribution');
+  if (input.website_signals?.international) scaleBits.push('international expansion signals');
+  if (input.website_signals?.careers_active) {
+    scaleBits.push(
+      input.website_signals.careers_roles.length
+        ? `active hiring (${input.website_signals.careers_roles.slice(0, 3).join(', ')})`
+        : 'an active careers page'
+    );
+  }
+  if (scaleBits.length) {
+    sentences.push(`Scaling indicators include ${scaleBits.slice(0, 4).join(', ')}.`);
+  }
+
+  // 4. GTM opportunity
+  if (ads >= 25 || landingPages >= 5) {
+    sentences.push(
+      `The combination of high creative volume and multiple landing pages points to growing attribution complexity and a likely need for stronger measurement and incrementality infrastructure.`
+    );
+  } else {
+    sentences.push(
+      `As they scale paid channels, the main GTM opportunity is helping them measure incrementality and attribute spend accurately before inefficiency compounds.`
+    );
+  }
+
+  return sentences.join(' ');
+}
+
+export async function generateNarrative(input: NarrativeInput): Promise<NarrativeResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   const contextBlock = buildContextBlock(input);
 
-  const systemPrompt = `You are a GTM intelligence analyst helping B2B sales teams at Northbeam prepare account research for DTC e-commerce brands. Be concise, specific, and intelligence-led. Avoid generic filler. Focus on what the signals actually reveal about the company's growth trajectory and pain points.`;
+  let growth_narrative = '';
 
-  const userPrompt = `Here is the intelligence gathered on ${input.domain}:
+  if (apiKey) {
+    try {
+      const client = new Anthropic({ apiKey });
+      const systemPrompt = `You are a GTM intelligence analyst helping B2B sales teams at Northbeam prepare account research for DTC e-commerce brands. Be concise, specific, and intelligence-led. Avoid generic filler. Focus on what the signals actually reveal about the company's growth trajectory and pain points.`;
+      const userPrompt = `Here is the intelligence gathered on ${input.domain}:
 
 ${contextBlock}
 
@@ -123,19 +207,29 @@ Write a Growth Narrative (2–4 sentences) that synthesizes what the company sel
 
 Respond with ONLY the narrative paragraph — no headers, no bullet points, no extra commentary.`;
 
-  logger.info('Generating growth narrative', { domain: input.domain });
+      logger.info('Generating growth narrative via Claude', { domain: input.domain });
 
-  const message = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
-    messages: [{ role: 'user', content: userPrompt }],
-    system: systemPrompt,
-  });
+      const message = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: userPrompt }],
+        system: systemPrompt,
+      });
 
-  const growth_narrative =
-    message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+      growth_narrative =
+        message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+    } catch (err) {
+      logger.error('Claude narrative failed — using template fallback', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
-  // Build the growth prompt (copyable block for the user to paste into Claude/ChatGPT)
+  // Fall back to the deterministic narrative if the API is unavailable or empty.
+  if (!growth_narrative) {
+    growth_narrative = templateNarrative(input);
+  }
+
   const growth_prompt = `You are a GTM intelligence assistant helping a sales team at Northbeam prepare for outreach to ${input.domain}.
 
 ## Company Intelligence

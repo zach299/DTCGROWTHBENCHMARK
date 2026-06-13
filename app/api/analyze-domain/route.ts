@@ -341,31 +341,30 @@ export async function POST(request: Request) {
     const campaignThemes = inferCampaignThemes(meta?.unique_landing_pages ?? []);
     const landingPageSignals = { campaign_themes: campaignThemes };
 
-    // Generate AI narrative (graceful degradation if ANTHROPIC_API_KEY not set)
+    // Generate narrative — uses Claude when ANTHROPIC_API_KEY is set,
+    // otherwise a deterministic template. Never throws.
     let growth_narrative: string | null = null;
     let growth_prompt: string | null = null;
 
-    if (process.env.ANTHROPIC_API_KEY) {
-      try {
-        const narrative = await generateNarrative({
-          domain: company.domain,
-          platform: company.platform,
-          categories: company.categories,
-          company_location: company.company_location,
-          estimated_yearly_sales: company.estimated_yearly_sales,
-          combined_followers: company.combined_followers,
-          meta,
-          brand_context: crawlResult?.brand_context ?? null,
-          website_signals: crawlResult?.website_signals ?? null,
-          campaign_themes: campaignThemes,
-        });
-        growth_narrative = narrative.growth_narrative;
-        growth_prompt = narrative.growth_prompt;
-      } catch (err) {
-        logger.error('Narrative generation failed', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+    try {
+      const narrative = await generateNarrative({
+        domain: company.domain,
+        platform: company.platform,
+        categories: company.categories,
+        company_location: company.company_location,
+        estimated_yearly_sales: company.estimated_yearly_sales,
+        combined_followers: company.combined_followers,
+        meta,
+        brand_context: crawlResult?.brand_context ?? null,
+        website_signals: crawlResult?.website_signals ?? null,
+        campaign_themes: campaignThemes,
+      });
+      growth_narrative = narrative.growth_narrative;
+      growth_prompt = narrative.growth_prompt;
+    } catch (err) {
+      logger.error('Narrative generation failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     const { error: insertError } = await supabase.from('domain_analyses').insert({
