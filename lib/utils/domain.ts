@@ -14,6 +14,21 @@ export function normalizeDomain(raw: string): string {
   return d;
 }
 
+// master_database domains are stored inconsistently (bare, www., http(s)://,
+// trailing slash). Build the set of common exact forms to match against — exact
+// match avoids the substring false-positives an ILIKE would risk.
+export function domainCandidates(input: string): string[] {
+  const bare = normalizeDomain(input);
+  const prefixes = ['', 'www.', 'http://', 'https://', 'http://www.', 'https://www.'];
+  const set = new Set<string>();
+  for (const p of prefixes) {
+    set.add(p + bare);
+    set.add(p + bare + '/');
+  }
+  set.add(input.trim());
+  return [...set];
+}
+
 export function extractRootDomain(domain: string): string {
   const parts = domain.split('.');
   if (parts.length <= 2) return domain;

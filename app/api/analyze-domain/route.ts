@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
-import { normalizeDomain } from '@/lib/utils/domain';
+import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 import { fetchMetaAdsSignals, type MetaAdsSignals } from '@/lib/providers/apifyMetaAds';
 import {
@@ -299,11 +299,14 @@ export async function POST(request: Request) {
   const supabase = createServiceClient();
 
   try {
+    // master_database stores domains inconsistently (bare / www. / http(s)://
+    // / trailing slash) — match any common form.
+    const candidates = domainCandidates(rawDomain);
     const lookup = await supabase
       .from('master_database')
       .select('*')
-      .eq('domain', domain)
-      .maybeSingle<MasterRow>();
+      .in('domain', candidates)
+      .limit(1);
 
     if (lookup.error) {
       logger.error('master_database lookup failed', { error: lookup.error.message });
@@ -313,23 +316,10 @@ export async function POST(request: Request) {
       );
     }
 
-    let company = lookup.data;
-
-    if (!company && rawDomain !== domain) {
-      const res = await supabase
-        .from('master_database')
-        .select('*')
-        .eq('domain', rawDomain)
-        .maybeSingle<MasterRow>();
-      if (res.error) {
-        logger.error('master_database lookup failed', { error: res.error.message });
-        return NextResponse.json(
-          { error: `Database lookup failed: ${res.error.message}` },
-          { status: 500 }
-        );
-      }
-      company = res.data;
-    }
+    const company: MasterRow | null = (lookup.data?.[0] as MasterRow) ?? null;
+    // Normalize the stored domain (some rows have www./protocol) so downstream
+    // crawl + ad-library URLs and snapshot keys are clean and consistent.
+    if (company) company.domain = normalizeDomain(company.domain);
 
     if (!company) {
       return NextResponse.json(

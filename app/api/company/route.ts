@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
-import { normalizeDomain } from '@/lib/utils/domain';
+import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 import { getTrends, getTimeline } from '@/lib/trends';
 import { computeMomentum, revenueRange } from '@/lib/intelligence';
@@ -31,22 +31,19 @@ export async function POST(request: Request) {
   const supabase = createServiceClient();
 
   try {
-    let { data: company } = await supabase
+    // master_database stores domains inconsistently (bare / www. / http(s)://
+    // / trailing slash) — match any common form.
+    const candidates = domainCandidates(rawDomain);
+    const { data: rows } = await supabase
       .from('master_database')
       .select('*')
-      .eq('domain', domain)
-      .maybeSingle();
-    if (!company && rawDomain !== domain) {
-      const res = await supabase
-        .from('master_database')
-        .select('*')
-        .eq('domain', rawDomain)
-        .maybeSingle();
-      company = res.data;
-    }
+      .in('domain', candidates)
+      .limit(1);
+    const company = rows?.[0] ?? null;
     if (!company) {
       return NextResponse.json({ error: 'Domain not found in database', domain }, { status: 404 });
     }
+    company.domain = normalizeDomain(company.domain);
 
     const { data: cached } = await supabase
       .from('domain_analyses')
