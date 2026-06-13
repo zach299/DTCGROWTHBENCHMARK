@@ -476,9 +476,14 @@ interface Mover {
   rank: number;
   domain: string;
   company_name: string | null;
+  primary_category?: string | null;
   active_meta_ads: number;
-  creative_velocity: string | null;
+  google_ads?: number;
+  linkedin_ads?: number;
+  creative_velocity?: string | null;
   growth_momentum: string | null;
+  estimated_revenue_range?: string | null;
+  spend_band?: string | null;
   landing_pages_count: number;
   percentile_top: number | null;
   last_enriched_at: string | null;
@@ -564,7 +569,11 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
                 <div className="w-10 text-sm font-bold text-gray-400">#{m.rank}</div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-gray-900 truncate capitalize">{brand(m)}</div>
-                  <div className="text-xs text-gray-400 truncate">{m.domain}</div>
+                  <div className="text-xs text-gray-400 truncate">
+                    {m.domain}
+                    {m.primary_category ? ` · ${m.primary_category}` : ''}
+                    {m.estimated_revenue_range && m.estimated_revenue_range !== 'Unknown' ? ` · ${m.estimated_revenue_range}` : ''}
+                  </div>
                 </div>
                 {m.percentile_top != null && (
                   <span className="hidden sm:inline rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
@@ -576,11 +585,16 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
                     {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] || ''}
                   </span>
                 )}
-                <div className="w-20 text-right">
+                <div className="hidden lg:flex items-center gap-3 text-right">
+                  <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div><div className="text-[10px] text-gray-400">Meta</div></div>
+                  <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.google_ads ?? 0}</div><div className="text-[10px] text-gray-400">Google</div></div>
+                  <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.linkedin_ads ?? 0}</div><div className="text-[10px] text-gray-400">LinkedIn</div></div>
+                </div>
+                <div className="lg:hidden w-20 text-right">
                   <div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div>
                   <div className="text-[10px] text-gray-400">Meta ads</div>
                 </div>
-                <div className="hidden lg:block w-20 text-right text-[11px] text-gray-400">
+                <div className="hidden xl:block w-20 text-right text-[11px] text-gray-400">
                   {relativeTime(m.last_enriched_at)}
                 </div>
               </button>
@@ -1162,7 +1176,7 @@ export default function Home() {
   const gScore = result?.growth_score ?? 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="dark-app min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <aside className="hidden md:flex w-56 shrink-0 flex-col bg-gray-900 text-gray-300 px-4 py-6">
         <div className="flex items-center gap-2 px-2 mb-8">

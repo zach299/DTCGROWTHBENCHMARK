@@ -44,3 +44,80 @@ body {
   65% { opacity: 1; }
   100% { opacity: 1; }
 }
+
+/* =========================================================================
+   Phase 8 — Premium dark theme. Scoped under .dark-app so the whole app flips
+   to a Bloomberg-terminal-style dark surface without touching every utility
+   class in the markup. Unlayered rules beat Tailwind's layered utilities, and
+   the descendant selector keeps specificity ahead of the base utility.
+   ========================================================================= */
+.dark-app {
+  --d-bg: #0a0c11;        /* app background */
+  --d-panel: #14171f;     /* cards / panels */
+  --d-panel-2: #1a1e28;   /* hover / nested */
+  --d-line: #232733;      /* borders */
+  --d-ink: #e6e9ef;       /* primary text */
+  --d-muted: #8b93a7;     /* secondary text */
+  --d-faint: #5b6373;     /* tertiary text */
+  background: var(--d-bg);
+  color: var(--d-ink);
+}
+.dark-app .min-h-screen { background: var(--d-bg); }
+
+/* Surfaces */
+.dark-app .bg-white { background-color: var(--d-panel); }
+.dark-app .bg-gray-50 { background-color: var(--d-bg); }
+.dark-app .bg-gray-100,
+.dark-app .bg-gray-50\/50 { background-color: var(--d-panel-2); }
+.dark-app .bg-gray-900 { background-color: #0d0f14; }
+.dark-app .bg-gray-800 { background-color: var(--d-panel-2); }
+
+/* Borders */
+.dark-app .border-gray-100,
+.dark-app .border-gray-200,
+.dark-app .border-gray-300 { border-color: var(--d-line); }
+
+/* Text */
+.dark-app .text-gray-900,
+.dark-app .text-gray-800 { color: var(--d-ink); }
+.dark-app .text-gray-700,
+.dark-app .text-gray-600 { color: #b7bdca; }
+.dark-app .text-gray-500,
+.dark-app .text-gray-400 { color: var(--d-muted); }
+
+/* Inputs */
+.dark-app input,
+.dark-app select,
+.dark-app textarea {
+  background-color: var(--d-panel) !important;
+  border-color: var(--d-line) !important;
+  color: var(--d-ink) !important;
+}
+.dark-app input::placeholder { color: var(--d-faint); }
+
+/* Accent chips stay legible on dark */
+.dark-app .bg-indigo-50 { background-color: #1e213a; }
+.dark-app .bg-indigo-100 { background-color: #252a4a; }
+.dark-app .text-indigo-600,
+.dark-app .text-indigo-700 { color: #a5b4fc; }
+.dark-app .bg-green-50 { background-color: #0f2e22; }
+.dark-app .text-green-700,
+.dark-app .text-green-600 { color: #4ade80; }
+.dark-app .bg-red-50 { background-color: #34161a; }
+.dark-app .text-red-600,
+.dark-app .text-red-700 { color: #f87171; }
+.dark-app .bg-amber-50,
+.dark-app .bg-yellow-50 { background-color: #2e2410; }
+
+/* Cards get a subtle premium lift */
+.dark-app .rounded-lg.border,
+.dark-app .rounded-xl.border { box-shadow: 0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.25); }
+
+/* Hover states */
+.dark-app .hover\:bg-gray-50:hover,
+.dark-app .hover\:bg-gray-100:hover { background-color: var(--d-panel-2); }
+.dark-app .hover\:text-gray-200:hover { color: var(--d-ink); }
+
+/* Dividers in tables */
+.dark-app .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+.dark-app .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: var(--d-line); }
