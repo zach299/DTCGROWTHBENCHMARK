@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/process-jobs",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/enqueue-stale",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
