@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { fetchMetaAdsSignals } from '@/lib/providers/apifyMetaAds';
 import { inferCampaignThemes } from '@/lib/providers/crawlHomepage';
 import { normalizeDomain } from '@/lib/utils/domain';
+import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
 
 // Meta-only enrichment for the bulk dataset. No website crawl, no Google /
@@ -56,24 +57,36 @@ export async function POST(request: Request) {
     const count = meta.active_ads_count;
     const themes = inferCampaignThemes(meta.unique_landing_pages);
 
-    return NextResponse.json({
-      ok: true,
-      signals: {
+    const signals = {
+      domain,
+      company_name: parsed.data.company_name ?? null,
+      active_meta_ads: count,
+      creative_count: count, // each active ad is a distinct creative
+      creative_velocity: velocityLabel(count),
+      campaign_diversity: diversityLabel(meta.unique_landing_pages.length),
+      ad_activity_level: activityLevel(count),
+      landing_pages: meta.unique_landing_pages,
+      campaign_themes: themes,
+      sample_ad_copy: meta.sample_ad_copy,
+      first_seen_date: meta.first_seen_date,
+      last_seen_date: null,
+      raw_meta_response: meta.raw,
+    };
+
+    // Persist so a UI/browser-driven run doesn't need direct DB access.
+    try {
+      const supabase = createServiceClient();
+      await supabase
+        .from('company_meta_signals')
+        .upsert({ ...signals, last_enriched_at: new Date().toISOString() }, { onConflict: 'domain' });
+    } catch (e) {
+      logger.error('enrich-meta persist failed', {
         domain,
-        company_name: parsed.data.company_name ?? null,
-        active_meta_ads: count,
-        creative_count: count, // each active ad is a distinct creative
-        creative_velocity: velocityLabel(count),
-        campaign_diversity: diversityLabel(meta.unique_landing_pages.length),
-        ad_activity_level: activityLevel(count),
-        landing_pages: meta.unique_landing_pages,
-        campaign_themes: themes,
-        sample_ad_copy: meta.sample_ad_copy,
-        first_seen_date: meta.first_seen_date,
-        last_seen_date: null,
-        raw_meta_response: meta.raw,
-      },
-    });
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    return NextResponse.json({ ok: true, signals });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('enrich-meta failed', { domain, error: msg });

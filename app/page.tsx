@@ -535,29 +535,149 @@ interface BulkStats {
   pct_with_ads: number;
 }
 
+const COST_PER_DOMAIN = 0.1;
+
 function BulkView() {
   const [s, setS] = useState<BulkStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [batchSize, setBatchSize] = useState(50);
+  const [running, setRunning] = useState(false);
+  const [prog, setProg] = useState({ total: 0, processed: 0, ok: 0, failed: 0 });
+
+  const loadStats = async () => {
+    try {
+      const r = await fetch('/api/bulk-stats');
+      setS(await r.json());
+    } catch {
+      setS(null);
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/bulk-stats');
-        setS(await r.json());
-      } catch {
-        setS(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadStats();
   }, []);
+
+  async function runBatch() {
+    if (running) return;
+    setRunning(true);
+    setProg({ total: 0, processed: 0, ok: 0, failed: 0 });
+    try {
+      const tRes = await fetch('/api/bulk-targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: batchSize }),
+      });
+      const { targets } = await tRes.json();
+      if (!targets?.length) {
+        setRunning(false);
+        return;
+      }
+      const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const { job_id } = await jobRes.json();
+
+      let processed = 0, ok = 0, failed = 0;
+      setProg({ total: targets.length, processed, ok, failed });
+
+      // Concurrency 3, driven by this tab.
+      let idx = 0;
+      const worker = async () => {
+        while (idx < targets.length) {
+          const t = targets[idx++];
+          try {
+            const res = await fetch('/api/enrich-meta', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(t),
+            });
+            const d = await res.json();
+            if (d.ok) ok += 1;
+            else failed += 1;
+          } catch {
+            failed += 1;
+          }
+          processed += 1;
+          setProg({ total: targets.length, processed, ok, failed });
+          if (processed % 10 === 0 && job_id) {
+            fetch('/api/bulk-job', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ job_id, domains_processed: processed, domains_successful: ok, domains_failed: failed, estimated_cost: Math.round(processed * COST_PER_DOMAIN * 100) / 100 }),
+            });
+          }
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+
+      if (job_id) {
+        await fetch('/api/bulk-job', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_id, domains_processed: processed, domains_successful: ok, domains_failed: failed, estimated_cost: Math.round(processed * COST_PER_DOMAIN * 100) / 100, done: true }),
+        });
+      }
+      await loadStats();
+    } catch {
+      /* noop */
+    } finally {
+      setRunning(false);
+    }
+  }
+
   const fmtNum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString());
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Bulk Enrichment</h1>
       <p className="text-sm text-gray-500 -mt-3">
-        Meta intelligence dataset across the top Shopify stores. Built by the offline bulk
-        enrichment job.
+        Meta-only intelligence across the top Shopify stores. Run a batch below — this tab drives
+        the job (keep it open until it finishes).
       </p>
+
+      {/* Run panel */}
+      <Card title="Run a Batch (Meta only)">
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Batch size</div>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={batchSize}
+              onChange={(e) => setBatchSize(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))}
+              disabled={running}
+              className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            onClick={runBatch}
+            disabled={running}
+            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {running ? 'Running…' : '▶ Run Batch'}
+          </button>
+          <span className="text-xs text-gray-400">
+            ~${(batchSize * COST_PER_DOMAIN).toFixed(0)} est · concurrency 3 · skips anything enriched in 30d
+          </span>
+        </div>
+        {(running || prog.processed > 0) && (
+          <div className="mt-4">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full bg-indigo-500 transition-all"
+                style={{ width: `${prog.total ? (prog.processed / prog.total) * 100 : 0}%` }}
+              />
+            </div>
+            <div className="mt-2 text-xs text-gray-600">
+              {prog.processed}/{prog.total} processed · {prog.ok} ok · {prog.failed} failed
+              {running ? ' · keep this tab open' : ' · done'}
+            </div>
+          </div>
+        )}
+        <p className="mt-3 text-[11px] text-gray-400">
+          Start with a small batch (e.g. 25) to validate cost and quality before scaling.
+        </p>
+      </Card>
+
       {loading ? (
         <Skeleton className="h-40 w-full" />
       ) : !s ? (
