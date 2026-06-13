@@ -637,6 +637,33 @@ function ImportView() {
   const [mapped, setMapped] = useState<string[]>([]);
   const [prog, setProg] = useState({ read: 0, upserted: 0, skipped: 0, failed: 0 });
 
+  // One-time backfill of derived intelligence for already-enriched companies.
+  const [bf, setBf] = useState<{ running: boolean; processed: number; updated: number; done: boolean }>({
+    running: false, processed: 0, updated: 0, done: false,
+  });
+  async function runBackfill() {
+    setBf({ running: true, processed: 0, updated: 0, done: false });
+    let cursor = 0, processed = 0, updated = 0;
+    try {
+      for (;;) {
+        const r = await fetch('/api/backfill', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cursor }),
+        });
+        const d = await r.json();
+        if (!r.ok) break;
+        processed += d.processed ?? 0;
+        updated += d.updated ?? 0;
+        cursor = d.next_cursor ?? cursor;
+        setBf({ running: !d.done, processed, updated, done: !!d.done });
+        if (d.done) break;
+      }
+    } catch {
+      /* stop */
+    }
+    setBf((s) => ({ ...s, running: false, done: true }));
+  }
+
   // Minimal RFC-4180 incremental parser. Feed it text chunks; it calls onRow
   // for each complete record. Quotes, escaped quotes (""), and commas/newlines
   // inside quotes are handled.
@@ -809,6 +836,23 @@ function ImportView() {
       )}
 
       {error && <div className="text-sm text-red-600">{error}</div>}
+
+      <div className="rounded-lg border border-gray-200 p-4 flex items-center justify-between gap-4">
+        <div>
+          <div className="text-sm font-medium text-gray-900">Backfill intelligence</div>
+          <div className="text-xs text-gray-500">
+            Recompute category, growth score, revenue range &amp; spend band for already-enriched companies. Free — no re-scraping.
+            {bf.processed > 0 && ` · ${bf.updated.toLocaleString()} updated / ${bf.processed.toLocaleString()} scanned${bf.done ? ' ✓' : '…'}`}
+          </div>
+        </div>
+        <button
+          onClick={runBackfill}
+          disabled={bf.running}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 shrink-0"
+        >
+          {bf.running ? 'Backfilling…' : bf.done ? 'Run again' : 'Run backfill'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1045,6 +1089,17 @@ export default function Home() {
     rank: number | null;
     total: number;
     percentile_top: number | null;
+    primary_category?: string | null;
+    category_rank?: number | null;
+    category_total?: number | null;
+    category_percentile_top?: number | null;
+    channels?: {
+      channel: string;
+      ads: number;
+      overall_label: string;
+      category_label: string;
+      overall_percentile_top: number | null;
+    }[];
   } | null>(null);
   const metaAdsForRank = result?.meta_ads?.active_ads_count;
   useEffect(() => {
@@ -1383,6 +1438,51 @@ export default function Home() {
                   )}
                 </StatCard>
               </div>
+
+              {/* Category & Channel Benchmarks */}
+              {rankInfo && (rankInfo.category_rank != null || (rankInfo.channels?.some((c) => c.ads > 0))) && (
+                <Card title="Benchmarks">
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    {/* Ranks */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Overall Growth Rank</span>
+                        <span className="font-semibold text-gray-900">
+                          #{rankInfo.rank} of {rankInfo.total.toLocaleString()}
+                          {rankInfo.percentile_top != null && (
+                            <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">Top {rankInfo.percentile_top}%</span>
+                          )}
+                        </span>
+                      </div>
+                      {rankInfo.category_rank != null && rankInfo.primary_category && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500">{rankInfo.primary_category} Rank</span>
+                          <span className="font-semibold text-gray-900">
+                            #{rankInfo.category_rank} of {rankInfo.category_total?.toLocaleString()}
+                            {rankInfo.category_percentile_top != null && (
+                              <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">Top {rankInfo.category_percentile_top}%</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {/* Channels */}
+                    <div className="space-y-2">
+                      {(rankInfo.channels ?? []).map((c) => (
+                        <div key={c.channel} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500">{c.channel}</span>
+                          <span className="text-right">
+                            <span className="font-semibold text-gray-900">{c.ads} ads</span>
+                            <span className={`ml-2 text-[11px] font-semibold ${c.overall_label.startsWith('Top') ? 'text-green-600' : 'text-gray-400'}`}>
+                              {c.overall_label}{rankInfo.primary_category && c.ads > 0 ? ` · ${c.category_label} in ${rankInfo.primary_category}` : ''}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+              )}
 
               {/* Growth Trends */}
               {result.trends && (
