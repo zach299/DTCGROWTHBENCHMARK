@@ -141,11 +141,21 @@ export async function POST(request: Request) {
 
   try {
     // Look up in master_database (normalized first, then as-is)
-    let { data: company } = await supabase
+    const lookup = await supabase
       .from('master_database')
       .select('*')
       .eq('domain', domain)
       .maybeSingle<MasterRow>();
+
+    if (lookup.error) {
+      logger.error('master_database lookup failed', { error: lookup.error.message });
+      return NextResponse.json(
+        { error: `Database lookup failed: ${lookup.error.message}` },
+        { status: 500 }
+      );
+    }
+
+    let company = lookup.data;
 
     if (!company && rawDomain !== domain) {
       const res = await supabase
@@ -153,6 +163,13 @@ export async function POST(request: Request) {
         .select('*')
         .eq('domain', rawDomain)
         .maybeSingle<MasterRow>();
+      if (res.error) {
+        logger.error('master_database lookup failed', { error: res.error.message });
+        return NextResponse.json(
+          { error: `Database lookup failed: ${res.error.message}` },
+          { status: 500 }
+        );
+      }
       company = res.data;
     }
 
