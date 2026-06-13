@@ -10,6 +10,7 @@ export interface AdPlatformResult {
   sample_ad_copy: string[];
   sample_creatives: string[];
   library_url: string | null;
+  note?: string; // debug: why unknown (env unset / error), or actor item count
   raw?: unknown; // first few items, for tuning field mapping
 }
 
@@ -98,7 +99,11 @@ function mapAds(platform: AdPlatformName, list: Record<string, unknown>[], libra
   };
 }
 
-function unknownResult(platform: AdPlatformName, libraryUrl: string): AdPlatformResult {
+function unknownResult(
+  platform: AdPlatformName,
+  libraryUrl: string,
+  note: string
+): AdPlatformResult {
   return {
     platform,
     status: 'unknown',
@@ -106,6 +111,7 @@ function unknownResult(platform: AdPlatformName, libraryUrl: string): AdPlatform
     sample_ad_copy: [],
     sample_creatives: [],
     library_url: libraryUrl,
+    note,
   };
 }
 
@@ -116,7 +122,7 @@ function unknownResult(platform: AdPlatformName, libraryUrl: string): AdPlatform
 export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> {
   const libraryUrl = `https://adstransparency.google.com/?region=US&domain=${encodeURIComponent(domain)}`;
   const actorId = process.env.APIFY_GOOGLE_ADS_ACTOR_ID;
-  if (!actorId) return unknownResult('Google', libraryUrl);
+  if (!actorId) return unknownResult('Google', libraryUrl, 'APIFY_GOOGLE_ADS_ACTOR_ID not set');
   try {
     // Pass several common input keys so most actors accept at least one.
     const list = await runActorJson(actorId, {
@@ -128,12 +134,13 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
       maxResults: 20,
     });
     logger.info('Google ads fetched', { domain, items: list.length });
-    return mapAds('Google', list, libraryUrl);
+    const result = mapAds('Google', list, libraryUrl);
+    result.note = `actor=${actorId} items=${list.length}`;
+    return result;
   } catch (err) {
-    logger.error('Google ads fetch failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return unknownResult('Google', libraryUrl);
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('Google ads fetch failed', { error: msg });
+    return unknownResult('Google', libraryUrl, `error: ${msg}`);
   }
 }
 
@@ -148,7 +155,7 @@ export async function fetchLinkedInAds(
   const query = companyName || domain.split('.')[0];
   const libraryUrl = `https://www.linkedin.com/ad-library/search?keyword=${encodeURIComponent(query)}`;
   const actorId = process.env.APIFY_LINKEDIN_ADS_ACTOR_ID;
-  if (!actorId) return unknownResult('LinkedIn', libraryUrl);
+  if (!actorId) return unknownResult('LinkedIn', libraryUrl, 'APIFY_LINKEDIN_ADS_ACTOR_ID not set');
   try {
     const list = await runActorJson(actorId, {
       keyword: query,
@@ -159,11 +166,12 @@ export async function fetchLinkedInAds(
       maxResults: 20,
     });
     logger.info('LinkedIn ads fetched', { query, items: list.length });
-    return mapAds('LinkedIn', list, libraryUrl);
+    const result = mapAds('LinkedIn', list, libraryUrl);
+    result.note = `actor=${actorId} items=${list.length}`;
+    return result;
   } catch (err) {
-    logger.error('LinkedIn ads fetch failed', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return unknownResult('LinkedIn', libraryUrl);
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('LinkedIn ads fetch failed', { error: msg });
+    return unknownResult('LinkedIn', libraryUrl, `error: ${msg}`);
   }
 }
