@@ -28,8 +28,9 @@ export interface HomepageCrawlResult {
   brand_context: BrandContext;
   website_signals: WebsiteSignals;
   tech_stack: DetectedTech[];
-  crawl_source: string; // debug: 'apify-html' | 'apify-synth' | 'jina'
+  crawl_source: string; // debug: 'jina' | 'apify-html'
   crawl_html_len: number; // debug: length of HTML we parsed
+  crawl_note: string | null; // debug: failed-primary error, if any
 }
 
 // Fingerprints matched against the raw page HTML (script srcs, pixel snippets,
@@ -229,6 +230,7 @@ const DEFAULT_WEBSITE_ACTOR_ID = 'apify~cheerio-scraper';
 interface FetchedHtml {
   html: string;
   source: string; // debug: which path produced the HTML
+  note?: string; // debug: error from a failed primary source, if any
 }
 
 async function fetchViaApify(url: string): Promise<FetchedHtml> {
@@ -283,12 +285,17 @@ async function fetchViaApify(url: string): Promise<FetchedHtml> {
 
 /** Fetch homepage HTML via the Jina reader proxy (r.jina.ai). */
 async function fetchViaJina(url: string): Promise<FetchedHtml> {
+  const headers: Record<string, string> = {
+    'X-Return-Format': 'html',
+    Accept: 'text/html,*/*;q=0.8',
+    'User-Agent': READER_UA,
+  };
+  // Optional: a JINA_API_KEY lifts the free-tier rate limit.
+  if (process.env.JINA_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.JINA_API_KEY}`;
+  }
   const res = await fetch(`https://r.jina.ai/${url}`, {
-    headers: {
-      'X-Return-Format': 'html',
-      Accept: 'text/html,*/*;q=0.8',
-      'User-Agent': READER_UA,
-    },
+    headers,
     signal: AbortSignal.timeout(25_000),
     redirect: 'follow',
   });
@@ -297,20 +304,23 @@ async function fetchViaJina(url: string): Promise<FetchedHtml> {
 }
 
 /**
- * Fetch homepage HTML. Apify (proxy-backed) is the primary source; Jina is the
- * fallback. We never fetch sites directly from Vercel — datacenter IPs get
- * 403'd by Shopify/Cloudflare bot protection. If both fail, the caller skips
- * website enrichment and continues scoring on Meta Ads signals.
+ * Fetch homepage HTML. Jina reader is the primary source — it returns the full
+ * raw HTML (incl. <script>/<meta>) from non-datacenter IPs, so it gets past
+ * Shopify/Cloudflare 403s and supports tech-stack detection. Apify's
+ * cheerio-scraper is the fallback if Jina is down or rate-limits. We never
+ * fetch sites directly from Vercel (datacenter IPs get 403'd). If both fail,
+ * the caller skips website enrichment and continues scoring on Meta Ads.
+ *
+ * The losing source's error is recorded in `note` for debugging.
  */
 async function fetchHomepageHtml(url: string): Promise<FetchedHtml> {
   try {
-    return await fetchViaApify(url);
-  } catch (err) {
-    logger.warn('Apify website crawl failed — falling back to Jina', {
-      url,
-      error: err instanceof Error ? err.message : String(err),
-    });
     return await fetchViaJina(url);
+  } catch (jinaErr) {
+    const jinaMsg = jinaErr instanceof Error ? jinaErr.message : String(jinaErr);
+    logger.warn('Jina reader failed — falling back to Apify', { url, error: jinaMsg });
+    const fetched = await fetchViaApify(url);
+    return { ...fetched, note: `jina_failed: ${jinaMsg}` };
   }
 }
 
@@ -349,6 +359,7 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
     tech_stack,
     crawl_source: fetched.source,
     crawl_html_len: html.length,
+    crawl_note: fetched.note ?? null,
   };
 }
 
