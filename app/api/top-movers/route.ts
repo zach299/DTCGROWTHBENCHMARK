@@ -38,6 +38,9 @@ export async function GET() {
         'domain, company_name, primary_category, subcategory, active_meta_ads, google_ads, linkedin_ads, growth_score, growth_momentum, estimated_revenue_range, spend_band, landing_pages, last_enriched_at',
         { count: 'exact' }
       )
+      // Reject pre-fix keyword-contamination (global totals ~14k–50k). Real
+      // high-volume DTC advertisers top out around ~8k active ads.
+      .lt('active_meta_ads', 13000)
       .order('growth_score', { ascending: false, nullsFirst: false })
       .order('active_meta_ads', { ascending: false })
       .limit(300);

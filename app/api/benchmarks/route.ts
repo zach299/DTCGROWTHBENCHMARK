@@ -38,6 +38,8 @@ export async function fetchAllEnriched(
     const { data, error } = await supabase
       .from('company_meta_signals')
       .select('primary_category, active_meta_ads, google_ads, linkedin_ads, landing_pages, growth_score')
+      // Exclude pre-fix keyword contamination so percentiles aren't skewed.
+      .lt('active_meta_ads', 13000)
       .range(from, from + PAGE - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
