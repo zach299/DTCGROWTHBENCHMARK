@@ -52,7 +52,9 @@ function clamp(n: number, min = 0, max = 100): number {
 }
 
 function formatMoney(n: number): string {
-  return n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1_000)}K`;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  return `$${Math.round(n / 1_000)}K`;
 }
 
 type AdActivityLevel = 'high' | 'medium' | 'low' | 'none' | 'unknown';
@@ -320,7 +322,10 @@ export async function POST(request: Request) {
     let crawlResult: Awaited<ReturnType<typeof crawlHomepage>> | null = null;
     let crawlError: string | null = null;
 
-    const advertiserName = company.domain.split('.')[0];
+    // Strip a leading "www." so ad-library lookups search the real brand
+    // (e.g. www.amazon.com -> amazon.com / "amazon", not "www").
+    const cleanDomain = company.domain.replace(/^www\./i, '');
+    const brandName = cleanDomain.split('.')[0];
 
     const [metaSettled, crawlSettled, googleSettled, linkedinSettled] =
       await Promise.allSettled([
@@ -328,8 +333,8 @@ export async function POST(request: Request) {
           ? fetchMetaAdsSignals(company.facebook_url, company.domain)
           : Promise.resolve(null),
         crawlHomepage(company.domain),
-        fetchGoogleAds(company.domain),
-        fetchLinkedInAds(company.domain, advertiserName),
+        fetchGoogleAds(cleanDomain),
+        fetchLinkedInAds(cleanDomain, brandName),
       ]);
 
     if (metaSettled.status === 'fulfilled') {
@@ -369,7 +374,7 @@ export async function POST(request: Request) {
       sample_creatives: meta?.sample_creatives ?? [],
       library_url: meta
         ? `https://www.facebook.com/ads/library/?active_status=active&country=US&q=${encodeURIComponent(
-            advertiserName
+            meta.advertiser_name ?? brandName
           )}`
         : null,
     };

@@ -18,6 +18,11 @@ function asString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
+// Normalize for fuzzy name matching: "THE RIDGE WALLET LLC" -> "theridgewalletllc"
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function firstNumber(...vals: unknown[]): number | null {
   for (const v of vals) if (typeof v === 'number' && Number.isFinite(v)) return v;
   return null;
@@ -135,9 +140,20 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
       searchQuery: domain,
       maxResults: 100,
     });
-    logger.info('Google ads fetched', { domain, items: list.length });
-    const result = mapAds('Google', list, libraryUrl);
-    result.note = `items=${list.length}`;
+    // The domain search can match unrelated advertisers (e.g. resellers), so
+    // keep only ads whose advertiser name plausibly matches the brand.
+    const brand = norm(domain.replace(/^www\./i, '').split('.')[0]);
+    const matched =
+      brand.length >= 3
+        ? list.filter((it) => {
+            const adv = norm(asString(it.advertiserName) ?? '');
+            return adv.includes(brand) || brand.includes(adv);
+          })
+        : list;
+    const relevant = matched.length > 0 ? matched : [];
+    logger.info('Google ads fetched', { domain, items: list.length, matched: relevant.length });
+    const result = mapAds('Google', relevant, libraryUrl);
+    result.note = `items=${list.length} matched=${relevant.length}`;
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
