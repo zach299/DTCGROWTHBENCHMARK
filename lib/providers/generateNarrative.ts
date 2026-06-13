@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@/lib/utils/logger';
 import type { BrandContext, WebsiteSignals, DetectedTech } from './crawlHomepage';
 import type { MetaAdsSignals } from './apifyMetaAds';
+import type { AdPlatformResult } from './adLibraries';
 
 export interface NarrativeResult {
   growth_narrative: string;
@@ -20,6 +21,7 @@ export interface NarrativeInput {
   website_signals: WebsiteSignals | null;
   tech_stack: DetectedTech[];
   server_side_signals: string[];
+  ad_platforms: AdPlatformResult[];
   campaign_themes: string[];
 }
 
@@ -34,6 +36,17 @@ function buildContextBlock(input: NarrativeInput): string {
     lines.push(`Estimated Yearly Sales: ${input.estimated_yearly_sales}`);
   if (input.combined_followers)
     lines.push(`Combined Social Followers: ${input.combined_followers}`);
+
+  // Authoritative ad-platform activity from the ad libraries.
+  const activePlatforms = input.ad_platforms.filter((p) => p.status === 'active');
+  if (activePlatforms.length) {
+    lines.push('');
+    lines.push(
+      `Active Ad Platforms: ${activePlatforms
+        .map((p) => (p.ads_count != null ? `${p.platform} (${p.ads_count} ads)` : p.platform))
+        .join(', ')}`
+    );
+  }
 
   if (input.meta) {
     lines.push('');
@@ -199,16 +212,17 @@ export function templateNarrative(input: NarrativeInput): string {
   const attribution = input.tech_stack.filter(
     (t) => t.category === 'Measurement' && !BASELINE.has(t.name)
   );
-  const adPlatforms = input.tech_stack
-    .filter((t) => t.category === 'Ad Platform')
-    .map((t) => t.name);
+  // Authoritative ad-platform activity from the ad libraries.
+  const adPlatforms = input.ad_platforms
+    .filter((p) => p.status === 'active')
+    .map((p) => p.platform);
   if (attribution.length) {
     sentences.push(
-      `Their stack already includes ${attribution.map((t) => t.name).join(' and ')} for measurement${adPlatforms.length ? `, running on ${adPlatforms.slice(0, 5).join(', ')}` : ''}.`
+      `Their stack already includes ${attribution.map((t) => t.name).join(' and ')} for measurement${adPlatforms.length ? `, running paid media on ${adPlatforms.join(', ')}` : ''}.`
     );
   } else if (adPlatforms.length >= 2) {
     sentences.push(
-      `They advertise across ${adPlatforms.slice(0, 5).join(', ')} but show no dedicated measurement platform in their stack.`
+      `They advertise across ${adPlatforms.join(', ')} but show no dedicated measurement platform in their stack.`
     );
   }
 

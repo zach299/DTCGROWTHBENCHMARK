@@ -12,6 +12,11 @@ import {
   type DetectedTech,
 } from '@/lib/providers/crawlHomepage';
 import { generateNarrative } from '@/lib/providers/generateNarrative';
+import {
+  fetchGoogleAds,
+  fetchLinkedInAds,
+  type AdPlatformResult,
+} from '@/lib/providers/adLibraries';
 
 // Apify run-sync can take up to ~2 minutes; allow generous function duration.
 // Note: Vercel hobby plan caps maxDuration lower (60s) — this takes effect on Pro+.
@@ -199,6 +204,7 @@ type RawResponse = {
   website_signals?: WebsiteSignals | null;
   tech_stack?: DetectedTech[] | null;
   server_side_signals?: string[] | null;
+  ad_platforms?: AdPlatformResult[] | null;
   landing_page_signals?: { campaign_themes: string[] } | null;
   growth_narrative?: string | null;
   growth_prompt?: string | null;
@@ -300,6 +306,7 @@ export async function POST(request: Request) {
         website_signals: raw.website_signals ?? null,
         tech_stack: raw.tech_stack ?? null,
         server_side_signals: raw.server_side_signals ?? null,
+        ad_platforms: raw.ad_platforms ?? null,
         landing_page_signals: raw.landing_page_signals ?? null,
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
@@ -308,17 +315,22 @@ export async function POST(request: Request) {
       });
     }
 
-    // Run Meta Ads fetch + homepage crawl in parallel
+    // Run Meta Ads + homepage crawl + Google/LinkedIn ad libraries in parallel.
     let meta: MetaAdsSignals | null = null;
     let crawlResult: Awaited<ReturnType<typeof crawlHomepage>> | null = null;
     let crawlError: string | null = null;
 
-    const [metaSettled, crawlSettled] = await Promise.allSettled([
-      company.facebook_url && process.env.APIFY_TOKEN
-        ? fetchMetaAdsSignals(company.facebook_url, company.domain)
-        : Promise.resolve(null),
-      crawlHomepage(company.domain),
-    ]);
+    const advertiserName = company.domain.split('.')[0];
+
+    const [metaSettled, crawlSettled, googleSettled, linkedinSettled] =
+      await Promise.allSettled([
+        company.facebook_url && process.env.APIFY_TOKEN
+          ? fetchMetaAdsSignals(company.facebook_url, company.domain)
+          : Promise.resolve(null),
+        crawlHomepage(company.domain),
+        fetchGoogleAds(company.domain),
+        fetchLinkedInAds(company.domain, advertiserName),
+      ]);
 
     if (metaSettled.status === 'fulfilled') {
       meta = metaSettled.value;
@@ -346,17 +358,50 @@ export async function POST(request: Request) {
     const campaignThemes = inferCampaignThemes(meta?.unique_landing_pages ?? []);
     const landingPageSignals = { campaign_themes: campaignThemes };
 
-    // Tech stack: start from the homepage fingerprints, then infer ad platforms
-    // from sources the homepage can't reveal. Shopify sandboxes ad pixels in
-    // Web Pixels, so the page HTML under-reports them — but the Meta Ad Library
-    // is definitive proof they run Meta. Merge that in (deduped, front of list).
+    // Unified Ad Platforms view (Meta from the Ad Library, Google + LinkedIn
+    // from their transparency libraries). This is the authoritative source for
+    // which platforms a brand actually advertises on.
+    const metaPlatform: AdPlatformResult = {
+      platform: 'Meta',
+      status: meta ? (meta.active_ads_count > 0 ? 'active' : 'none') : 'unknown',
+      ads_count: meta?.active_ads_count ?? null,
+      sample_ad_copy: meta?.sample_ad_copy ?? [],
+      sample_creatives: meta?.sample_creatives ?? [],
+      library_url: meta
+        ? `https://www.facebook.com/ads/library/?active_status=active&country=US&q=${encodeURIComponent(
+            advertiserName
+          )}`
+        : null,
+    };
+    const googlePlatform =
+      googleSettled.status === 'fulfilled'
+        ? googleSettled.value
+        : ({
+            platform: 'Google',
+            status: 'unknown',
+            ads_count: null,
+            sample_ad_copy: [],
+            sample_creatives: [],
+            library_url: null,
+          } as AdPlatformResult);
+    const linkedinPlatform =
+      linkedinSettled.status === 'fulfilled'
+        ? linkedinSettled.value
+        : ({
+            platform: 'LinkedIn',
+            status: 'unknown',
+            ads_count: null,
+            sample_ad_copy: [],
+            sample_creatives: [],
+            library_url: null,
+          } as AdPlatformResult);
+    const adPlatforms: AdPlatformResult[] = [metaPlatform, googlePlatform, linkedinPlatform];
+
+    // Tech stack from homepage fingerprints (Backend / Measurement / Lifecycle).
+    // Ad platforms now come from the ad libraries above, not pixel inference.
     const techStack: DetectedTech[] = crawlResult?.tech_stack
       ? [...crawlResult.tech_stack]
       : [];
-    const hasTech = (name: string) => techStack.some((t) => t.name === name);
-    if (meta && meta.active_ads_count > 0 && !hasTech('Meta')) {
-      techStack.unshift({ name: 'Meta', category: 'Ad Platform' });
-    }
 
     // Generate narrative — uses Claude when ANTHROPIC_API_KEY is set,
     // otherwise a deterministic template. Never throws.
@@ -376,6 +421,7 @@ export async function POST(request: Request) {
         website_signals: crawlResult?.website_signals ?? null,
         tech_stack: techStack,
         server_side_signals: crawlResult?.server_side_signals ?? [],
+        ad_platforms: adPlatforms,
         campaign_themes: campaignThemes,
       });
       growth_narrative = narrative.growth_narrative;
@@ -405,6 +451,7 @@ export async function POST(request: Request) {
         website_signals: crawlResult?.website_signals ?? null,
         tech_stack: techStack,
         server_side_signals: crawlResult?.server_side_signals ?? null,
+        ad_platforms: adPlatforms,
         landing_page_signals: landingPageSignals,
         crawl_error: crawlError,
         crawl_source: crawlResult?.crawl_source ?? null,
@@ -433,6 +480,7 @@ export async function POST(request: Request) {
       website_signals: crawlResult?.website_signals ?? null,
       tech_stack: techStack,
       server_side_signals: crawlResult?.server_side_signals ?? null,
+      ad_platforms: adPlatforms,
       landing_page_signals: landingPageSignals,
       crawl_error: crawlError,
       crawl_source: crawlResult?.crawl_source ?? null,
