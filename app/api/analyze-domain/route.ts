@@ -448,6 +448,11 @@ export async function POST(request: Request) {
     let meta: MetaAdsSignals | null = null;
     let crawlResult: Awaited<ReturnType<typeof crawlHomepage>> | null = null;
     let crawlError: string | null = null;
+    let metaError: string | null = company.facebook_url
+      ? process.env.APIFY_TOKEN
+        ? null
+        : 'APIFY_TOKEN not set'
+      : 'no facebook_url on record in master_database';
 
     // Strip a leading "www." so ad-library lookups search the real brand
     // (e.g. www.amazon.com -> amazon.com / "amazon", not "www").
@@ -466,12 +471,16 @@ export async function POST(request: Request) {
 
     if (metaSettled.status === 'fulfilled') {
       meta = metaSettled.value;
+      if (meta && meta.active_ads_count === 0) {
+        metaError = `page resolved (${meta.advertiser_name ?? '?'}) but 0 active ads returned`;
+      }
     } else {
+      metaError =
+        metaSettled.reason instanceof Error
+          ? metaSettled.reason.message
+          : String(metaSettled.reason);
       logger.error('Meta Ads fetch failed — falling back to heuristic scoring', {
-        error:
-          metaSettled.reason instanceof Error
-            ? metaSettled.reason.message
-            : String(metaSettled.reason),
+        error: metaError,
       });
     }
 
@@ -628,6 +637,7 @@ export async function POST(request: Request) {
         crawl_source: crawlResult?.crawl_source ?? null,
         crawl_html_len: crawlResult?.crawl_html_len ?? null,
         crawl_note: crawlResult?.crawl_note ?? null,
+        meta_error: metaError,
         growth_narrative,
         growth_prompt,
         growth_momentum: momentum.label,
@@ -683,6 +693,7 @@ export async function POST(request: Request) {
       crawl_source: crawlResult?.crawl_source ?? null,
       crawl_html_len: crawlResult?.crawl_html_len ?? null,
       crawl_note: crawlResult?.crawl_note ?? null,
+      meta_error: metaError,
       growth_narrative,
       growth_prompt,
       research_brief,
