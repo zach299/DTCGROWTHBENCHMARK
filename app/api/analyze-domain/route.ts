@@ -4,6 +4,13 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 import { fetchMetaAdsSignals, type MetaAdsSignals } from '@/lib/providers/apifyMetaAds';
+import {
+  crawlHomepage,
+  inferCampaignThemes,
+  type BrandContext,
+  type WebsiteSignals,
+} from '@/lib/providers/crawlHomepage';
+import { generateNarrative } from '@/lib/providers/generateNarrative';
 
 // Apify run-sync can take up to ~2 minutes; allow generous function duration.
 // Note: Vercel hobby plan caps maxDuration lower (60s) — this takes effect on Pro+.
@@ -18,10 +25,8 @@ interface MasterRow {
   domain: string;
   average_product_price: string | null;
   categories: string | null;
-  // Stored as text in master_database, e.g. "54500"
   combined_followers: string | null;
   company_location: string | null;
-  // Stored as text, e.g. "USD $127,836,522.84"
   estimated_yearly_sales: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
@@ -68,7 +73,6 @@ function computeScores(company: MasterRow, meta: MetaAdsSignals | null) {
 
   const reasons: string[] = [];
 
-  // --- Growth Score ---
   let growth = 0;
 
   if (meta) {
@@ -98,7 +102,6 @@ function computeScores(company: MasterRow, meta: MetaAdsSignals | null) {
       reasons.push(`Active on ${names.join(' + ')}`);
     }
   } else {
-    // Conservative redistribution: no ad/landing-page points awarded.
     reasons.push('Meta Ad Library data unavailable');
   }
 
@@ -120,7 +123,6 @@ function computeScores(company: MasterRow, meta: MetaAdsSignals | null) {
 
   const growth_score = clamp(growth);
 
-  // --- Northbeam Fit Score ---
   let fit = 0;
   if (meta) {
     if (adsCount >= 50) fit += 35;
@@ -130,7 +132,6 @@ function computeScores(company: MasterRow, meta: MetaAdsSignals | null) {
     if (landingPagesCount >= 10) fit += 15;
     else if (landingPagesCount >= 5) fit += 8;
 
-    // Evidence of paid acquisition
     if (adsCount > 0) fit += 10;
   }
   if (sales > 0) fit += Math.min(25, Math.log10(sales) * 4);
@@ -188,6 +189,18 @@ function metaAdsResponse(meta: MetaAdsSignals | null, activity: AdActivityLevel)
   };
 }
 
+type RawResponse = {
+  method?: string;
+  inputs?: unknown;
+  meta_ads?: Record<string, unknown> | null;
+  apify_raw?: unknown;
+  brand_context?: BrandContext | null;
+  website_signals?: WebsiteSignals | null;
+  landing_page_signals?: { campaign_themes: string[] } | null;
+  growth_narrative?: string | null;
+  growth_prompt?: string | null;
+};
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -209,7 +222,6 @@ export async function POST(request: Request) {
   const supabase = createServiceClient();
 
   try {
-    // Look up in master_database (normalized first, then as-is)
     const lookup = await supabase
       .from('master_database')
       .select('*')
@@ -259,10 +271,8 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (cached) {
-      // Surface stored meta_ads on cached responses too.
-      const cachedMeta =
-        (cached.raw_response as { meta_ads?: Record<string, unknown> | null } | null)
-          ?.meta_ads ?? null;
+      const raw = (cached.raw_response ?? {}) as RawResponse;
+      const cachedMeta = raw.meta_ads ?? null;
       let cachedMetaOut: Record<string, unknown> | null = null;
       if (cachedMeta) {
         const count = Number(cachedMeta.active_ads_count ?? 0);
@@ -283,26 +293,80 @@ export async function POST(request: Request) {
         outbound_hook: cached.outbound_hook,
         reasons: cached.reasons,
         meta_ads: cachedMetaOut,
+        brand_context: raw.brand_context ?? null,
+        website_signals: raw.website_signals ?? null,
+        landing_page_signals: raw.landing_page_signals ?? null,
+        growth_narrative: raw.growth_narrative ?? null,
+        growth_prompt: raw.growth_prompt ?? null,
         cached: true,
         company,
       });
     }
 
-    // Phase 2: fetch Meta Ad Library signals via Apify (graceful degradation).
+    // Run Meta Ads fetch + homepage crawl in parallel
     let meta: MetaAdsSignals | null = null;
-    if (company.facebook_url && process.env.APIFY_TOKEN) {
-      try {
-        meta = await fetchMetaAdsSignals(company.facebook_url, company.domain);
-      } catch (err) {
-        logger.error('Meta Ads fetch failed — falling back to heuristic scoring', {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        meta = null;
-      }
+    let crawlResult: Awaited<ReturnType<typeof crawlHomepage>> | null = null;
+
+    const [metaSettled, crawlSettled] = await Promise.allSettled([
+      company.facebook_url && process.env.APIFY_TOKEN
+        ? fetchMetaAdsSignals(company.facebook_url, company.domain)
+        : Promise.resolve(null),
+      crawlHomepage(company.domain),
+    ]);
+
+    if (metaSettled.status === 'fulfilled') {
+      meta = metaSettled.value;
+    } else {
+      logger.error('Meta Ads fetch failed — falling back to heuristic scoring', {
+        error:
+          metaSettled.reason instanceof Error
+            ? metaSettled.reason.message
+            : String(metaSettled.reason),
+      });
+    }
+
+    if (crawlSettled.status === 'fulfilled') {
+      crawlResult = crawlSettled.value;
+    } else {
+      logger.error('Homepage crawl failed', {
+        error:
+          crawlSettled.reason instanceof Error
+            ? crawlSettled.reason.message
+            : String(crawlSettled.reason),
+      });
     }
 
     const analysis = computeScores(company, meta);
     const metaOut = metaAdsResponse(meta, analysis.ad_activity_level);
+    const campaignThemes = inferCampaignThemes(meta?.unique_landing_pages ?? []);
+    const landingPageSignals = { campaign_themes: campaignThemes };
+
+    // Generate AI narrative (graceful degradation if ANTHROPIC_API_KEY not set)
+    let growth_narrative: string | null = null;
+    let growth_prompt: string | null = null;
+
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const narrative = await generateNarrative({
+          domain: company.domain,
+          platform: company.platform,
+          categories: company.categories,
+          company_location: company.company_location,
+          estimated_yearly_sales: company.estimated_yearly_sales,
+          combined_followers: company.combined_followers,
+          meta,
+          brand_context: crawlResult?.brand_context ?? null,
+          website_signals: crawlResult?.website_signals ?? null,
+          campaign_themes: campaignThemes,
+        });
+        growth_narrative = narrative.growth_narrative;
+        growth_prompt = narrative.growth_prompt;
+      } catch (err) {
+        logger.error('Narrative generation failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     const { error: insertError } = await supabase.from('domain_analyses').insert({
       domain: company.domain,
@@ -319,6 +383,11 @@ export async function POST(request: Request) {
         inputs: company,
         meta_ads: metaOut,
         apify_raw: meta?.raw ?? null,
+        brand_context: crawlResult?.brand_context ?? null,
+        website_signals: crawlResult?.website_signals ?? null,
+        landing_page_signals: landingPageSignals,
+        growth_narrative,
+        growth_prompt,
       },
     });
 
@@ -336,6 +405,11 @@ export async function POST(request: Request) {
       outbound_hook: analysis.outbound_hook,
       reasons: analysis.reasons,
       meta_ads: metaOut,
+      brand_context: crawlResult?.brand_context ?? null,
+      website_signals: crawlResult?.website_signals ?? null,
+      landing_page_signals: landingPageSignals,
+      growth_narrative,
+      growth_prompt,
       cached: false,
       company,
     });
