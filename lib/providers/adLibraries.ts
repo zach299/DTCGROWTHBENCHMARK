@@ -129,11 +129,13 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
   if (!actorId) return unknownResult('Google', libraryUrl, 'APIFY_GOOGLE_ADS_ACTOR_ID not set');
   try {
     // Pass several common input keys so most actors accept at least one.
+    // region "" = all regions (SolidCode actor enum: "", "US", "CA", ...).
     const list = await runActorJson(actorId, {
       domain,
       domains: [domain],
       url: libraryUrl,
-      region: 'anywhere',
+      startUrls: [{ url: libraryUrl }],
+      region: '',
       maxItems: 20,
       maxResults: 20,
       maxNumberOfAds: 20,
@@ -163,6 +165,7 @@ export async function fetchLinkedInAds(
   if (!actorId) return unknownResult('LinkedIn', libraryUrl, 'APIFY_LINKEDIN_ADS_ACTOR_ID not set');
   try {
     const list = await runActorJson(actorId, {
+      startUrls: [{ url: libraryUrl }],
       keyword: query,
       companyName: query,
       query,
