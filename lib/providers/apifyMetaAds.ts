@@ -280,10 +280,10 @@ export async function fetchMetaAdsSignals(
   }
 
   const resolvedCount = totalAds ?? scopedItems.length;
-  // Sanity backstop: no real DTC/Shopify advertiser runs >5000 active ads at
-  // once. A value this high is almost certainly a wrong-page match or
-  // contaminated keyword total — reject it rather than poison the dataset.
-  if (resolvedCount > 5000) {
+  // Sanity backstop. Real high-volume DTC brands (e.g. RYZE) can run ~8k active
+  // ads, but contaminated keyword totals are 14k–50k. Reject only the clearly
+  // implausible band so legit high-volume advertisers still count.
+  if (resolvedCount > 13000) {
     logger.warn('Apify Meta Ads: implausible count rejected', { pageName, resolvedCount });
     return emptySignals();
   }

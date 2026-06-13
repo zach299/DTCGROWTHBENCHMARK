@@ -316,17 +316,26 @@ export async function POST(request: Request) {
       );
     }
 
-    const company: MasterRow | null = (lookup.data?.[0] as MasterRow) ?? null;
+    // Not in the Store Leads DB? Synthesize a minimal company so any domain can
+    // still be analyzed (Meta/Google/LinkedIn/website work from the domain).
+    const company: MasterRow =
+      (lookup.data?.[0] as MasterRow) ?? {
+        id: null as unknown as number,
+        domain,
+        average_product_price: null,
+        categories: null,
+        combined_followers: null,
+        company_location: null,
+        estimated_yearly_sales: null,
+        facebook_url: null,
+        instagram_url: null,
+        platform: null,
+        tiktok_url: null,
+      };
+    const inDb = (company.id as number | null) != null;
     // Normalize the stored domain (some rows have www./protocol) so downstream
     // crawl + ad-library URLs and snapshot keys are clean and consistent.
-    if (company) company.domain = normalizeDomain(company.domain);
-
-    if (!company) {
-      return NextResponse.json(
-        { error: 'Domain not found in database', domain },
-        { status: 404 }
-      );
-    }
+    company.domain = normalizeDomain(company.domain);
 
     // Check cache
     const { data: cached } = await supabase
@@ -598,7 +607,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const { error: insertError } = await supabase.from('domain_analyses').insert({
+    // Only cache to domain_analyses for companies that exist in master_database
+    // (the table keys on master_database_id). Out-of-DB domains skip the cache
+    // but still get snapshots (keyed by domain).
+    const { error: insertError } = inDb
+      ? await supabase.from('domain_analyses').insert({
       domain: company.domain,
       master_database_id: company.id,
       growth_score: analysis.growth_score,
@@ -632,7 +645,8 @@ export async function POST(request: Request) {
         revenue_confidence: revenue.confidence,
         research_brief,
       },
-    });
+    })
+      : { error: null };
 
     if (insertError) {
       logger.error('Failed to insert domain analysis', { error: insertError.message });

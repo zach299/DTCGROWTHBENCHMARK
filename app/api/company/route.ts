@@ -39,26 +39,43 @@ export async function POST(request: Request) {
       .select('*')
       .in('domain', candidates)
       .limit(1);
-    const company = rows?.[0] ?? null;
-    if (!company) {
-      return NextResponse.json({ error: 'Domain not found in database', domain }, { status: 404 });
-    }
+    // Not in the Store Leads DB? Synthesize a minimal company so any domain can
+    // still be analyzed (Meta/Google/LinkedIn/website all work from the domain).
+    const company =
+      rows?.[0] ?? {
+        id: null,
+        domain,
+        platform: null,
+        categories: null,
+        estimated_yearly_sales: null,
+        combined_followers: null,
+        company_location: null,
+        facebook_url: null,
+        instagram_url: null,
+        tiktok_url: null,
+        average_product_price: null,
+      };
     company.domain = normalizeDomain(company.domain);
+    const inDb = company.id != null;
 
-    const { data: cached } = await supabase
-      .from('domain_analyses')
-      .select('*')
-      .eq('master_database_id', company.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let cached: Record<string, unknown> | null = null;
+    if (inDb) {
+      const res = await supabase
+        .from('domain_analyses')
+        .select('*')
+        .eq('master_database_id', company.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      cached = res.data;
+    }
 
     let analysis: Record<string, unknown> | null = null;
     let cacheAgeDays: number | null = null;
     let cacheFresh = false;
 
     if (cached) {
-      cacheAgeDays = (Date.now() - new Date(cached.created_at).getTime()) / 86_400_000;
+      cacheAgeDays = (Date.now() - new Date(cached.created_at as string).getTime()) / 86_400_000;
       cacheFresh = cacheAgeDays <= CACHE_TTL_DAYS;
       const raw = (cached.raw_response ?? {}) as Record<string, unknown>;
       const cachedMeta = (raw.meta_ads ?? null) as Record<string, unknown> | null;
