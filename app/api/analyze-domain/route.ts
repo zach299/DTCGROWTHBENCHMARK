@@ -344,6 +344,18 @@ export async function POST(request: Request) {
     const campaignThemes = inferCampaignThemes(meta?.unique_landing_pages ?? []);
     const landingPageSignals = { campaign_themes: campaignThemes };
 
+    // Tech stack: start from the homepage fingerprints, then infer ad platforms
+    // from sources the homepage can't reveal. Shopify sandboxes ad pixels in
+    // Web Pixels, so the page HTML under-reports them — but the Meta Ad Library
+    // is definitive proof they run Meta. Merge that in (deduped, front of list).
+    const techStack: DetectedTech[] = crawlResult?.tech_stack
+      ? [...crawlResult.tech_stack]
+      : [];
+    const hasTech = (name: string) => techStack.some((t) => t.name === name);
+    if (meta && meta.active_ads_count > 0 && !hasTech('Meta')) {
+      techStack.unshift({ name: 'Meta', category: 'Ad Platform' });
+    }
+
     // Generate narrative — uses Claude when ANTHROPIC_API_KEY is set,
     // otherwise a deterministic template. Never throws.
     let growth_narrative: string | null = null;
@@ -360,7 +372,7 @@ export async function POST(request: Request) {
         meta,
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
-        tech_stack: crawlResult?.tech_stack ?? [],
+        tech_stack: techStack,
         campaign_themes: campaignThemes,
       });
       growth_narrative = narrative.growth_narrative;
@@ -388,7 +400,7 @@ export async function POST(request: Request) {
         apify_raw: meta?.raw ?? null,
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
-        tech_stack: crawlResult?.tech_stack ?? null,
+        tech_stack: techStack,
         landing_page_signals: landingPageSignals,
         crawl_error: crawlError,
         crawl_source: crawlResult?.crawl_source ?? null,
@@ -415,7 +427,7 @@ export async function POST(request: Request) {
       meta_ads: metaOut,
       brand_context: crawlResult?.brand_context ?? null,
       website_signals: crawlResult?.website_signals ?? null,
-      tech_stack: crawlResult?.tech_stack ?? null,
+      tech_stack: techStack,
       landing_page_signals: landingPageSignals,
       crawl_error: crawlError,
       crawl_source: crawlResult?.crawl_source ?? null,

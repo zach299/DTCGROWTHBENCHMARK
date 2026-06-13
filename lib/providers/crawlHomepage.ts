@@ -33,8 +33,8 @@ export interface HomepageCrawlResult {
   crawl_note: string | null; // debug: failed-primary error, if any
 }
 
-// Category display/priority order. detectTechStack returns matches grouped in
-// this order so the most GTM-relevant stacks surface first.
+// Category display/priority order. Detected tech is grouped in this order so
+// the most GTM-relevant stacks surface first.
 export const TECH_CATEGORY_ORDER = [
   'Ad Platform',
   'Backend',
@@ -99,13 +99,53 @@ const TECH_FINGERPRINTS: { name: string; category: string; pattern: RegExp }[] =
   { name: 'Yotpo SMS', category: 'Lifecycle', pattern: /smsbump|yotpo.{0,20}sms/i },
 ];
 
-function detectTechStack(html: string): DetectedTech[] {
+function matchFingerprints(text: string): DetectedTech[] {
+  const found: DetectedTech[] = [];
+  for (const fp of TECH_FINGERPRINTS) {
+    if (fp.pattern.test(text)) found.push({ name: fp.name, category: fp.category });
+  }
+  return found;
+}
+
+/**
+ * Find pixels hidden inside Google Tag Manager containers.
+ *
+ * Shopify (and many sites) load ad pixels through GTM, so they never appear as
+ * inline scripts in the page HTML. But the GTM container itself is a public JS
+ * file that lists every configured tag — fetch it and fingerprint it to surface
+ * Meta / Google Ads / TikTok / Pinterest / Snap / etc. that the page hides.
+ */
+async function detectPixelsViaGtm(html: string): Promise<DetectedTech[]> {
+  const ids = [...new Set([...html.matchAll(/GTM-[A-Z0-9]+/g)].map((m) => m[0]))].slice(0, 2);
+  if (ids.length === 0) return [];
+
+  const results = await Promise.allSettled(
+    ids.map(async (id) => {
+      const res = await fetch(`https://www.googletagmanager.com/gtm.js?id=${id}`, {
+        signal: AbortSignal.timeout(8_000),
+        headers: { 'User-Agent': READER_UA },
+      });
+      if (!res.ok) return [] as DetectedTech[];
+      const js = await res.text();
+      // Only trust Ad Platform / Measurement fingerprints from container JS.
+      return matchFingerprints(js).filter(
+        (t) => t.category === 'Ad Platform' || t.category === 'Measurement'
+      );
+    })
+  );
+
+  const out: DetectedTech[] = [];
+  for (const r of results) if (r.status === 'fulfilled') out.push(...r.value);
+  return out;
+}
+
+function dedupeTech(list: DetectedTech[]): DetectedTech[] {
   const found: DetectedTech[] = [];
   const seen = new Set<string>();
-  for (const fp of TECH_FINGERPRINTS) {
-    if (fp.pattern.test(html) && !seen.has(fp.name)) {
-      seen.add(fp.name);
-      found.push({ name: fp.name, category: fp.category });
+  for (const t of list) {
+    if (!seen.has(t.name)) {
+      seen.add(t.name);
+      found.push(t);
     }
   }
   // Stable sort into the priority category order (fingerprints are already in
@@ -311,9 +351,9 @@ async function fetchViaApify(url: string): Promise<FetchedHtml> {
 async function fetchViaJina(url: string): Promise<FetchedHtml> {
   const headers: Record<string, string> = {
     'X-Return-Format': 'html',
-    // 'direct' fetches the raw HTTP response without a headless browser — far
-    // faster, and still includes the <script>/<meta> tags we fingerprint.
-    'X-Engine': 'direct',
+    // Use the default (browser) engine: it executes GTM/loaders so more
+    // runtime-injected scripts appear for tech-stack detection. The crawl runs
+    // in parallel with the slower Meta Ads call, so the extra time is hidden.
     Accept: 'text/html,*/*;q=0.8',
     'User-Agent': READER_UA,
   };
@@ -368,9 +408,12 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
   const hero_headline = h1;
   const hero_subheadline = extractHeroSubheadline(html);
   const website_signals = detectWebsiteSignals(html);
-  // Tech stack needs the raw page code (script srcs, pixel snippets) — this is
-  // why we crawl via Apify rather than a markdown reader.
-  const tech_stack = detectTechStack(html);
+  // Tech stack: fingerprint the page HTML, then also crack open any GTM
+  // container to surface ad pixels the page loads indirectly (Shopify Web
+  // Pixels / GTM hide Meta/Google/TikTok/etc. from the page source).
+  const htmlTech = matchFingerprints(html);
+  const gtmTech = await detectPixelsViaGtm(html);
+  const tech_stack = dedupeTech([...htmlTech, ...gtmTech]);
 
   return {
     brand_context: {
