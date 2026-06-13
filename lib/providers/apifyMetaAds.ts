@@ -279,9 +279,18 @@ export async function fetchMetaAdsSignals(
     }
   }
 
+  const resolvedCount = totalAds ?? scopedItems.length;
+  // Sanity backstop: no real DTC/Shopify advertiser runs >5000 active ads at
+  // once. A value this high is almost certainly a wrong-page match or
+  // contaminated keyword total — reject it rather than poison the dataset.
+  if (resolvedCount > 5000) {
+    logger.warn('Apify Meta Ads: implausible count rejected', { pageName, resolvedCount });
+    return emptySignals();
+  }
+
   return {
     advertiser_name: advertiserName ?? advertiserFallback,
-    active_ads_count: totalAds ?? scopedItems.length,
+    active_ads_count: resolvedCount,
     unique_landing_pages: [...landingPages].slice(0, 25),
     sample_ad_copy: adCopy,
     sample_creatives: creatives,
