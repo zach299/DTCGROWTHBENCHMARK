@@ -212,7 +212,10 @@ function detectWebsiteSignals(html: string): WebsiteSignals {
 const READER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-const DEFAULT_WEBSITE_ACTOR_ID = 'apify~website-content-crawler';
+// cheerio-scraper returns the raw HTTP response HTML (scripts/meta intact),
+// which is what tech-stack fingerprinting needs. website-content-crawler
+// strips scripts during readability extraction, so it can't be used here.
+const DEFAULT_WEBSITE_ACTOR_ID = 'apify~cheerio-scraper';
 
 /**
  * Fetch homepage HTML via Apify's website-content-crawler.
@@ -233,17 +236,21 @@ async function fetchViaApify(url: string): Promise<FetchedHtml> {
   if (!token) throw new Error('APIFY_TOKEN not set');
   const actorId = process.env.APIFY_WEBSITE_ACTOR_ID || DEFAULT_WEBSITE_ACTOR_ID;
 
+  // pageFunction runs inside the actor; it returns the full raw HTML of the
+  // page (cheerio keeps <script>/<meta> tags from the original response).
+  const pageFunction =
+    'async function pageFunction(context) { const { $, request } = context; return { url: request.url, html: $.html() }; }';
+
   const input = {
     startUrls: [{ url }],
-    crawlerType: 'cheerio',
-    maxCrawlPages: 1,
-    maxCrawlDepth: 0,
-    saveHtml: true,
-    // Keep the original HTML (incl. <script> tags) so tech-stack fingerprints
-    // survive — the default transformer strips scripts during extraction.
-    htmlTransformer: 'none',
-    removeElementsCssSelector: '',
+    pageFunction,
     proxyConfiguration: { useApifyProxy: true },
+    maxRequestsPerCrawl: 1,
+    maxRequestRetries: 1,
+    // Don't follow links — we only want the homepage.
+    linkSelector: '',
+    globs: [],
+    pseudoUrls: [],
   };
 
   const endpoint =
@@ -265,33 +272,13 @@ async function fetchViaApify(url: string): Promise<FetchedHtml> {
   const items = (await res.json()) as unknown;
   const list = Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
   const item = list.find((i) => typeof i.error !== 'string');
-  if (!item) throw new Error('Apify website crawl returned no usable page');
-
-  // The actor may store raw HTML under several keys depending on version/config.
-  const htmlField =
-    [item.html, item.htmlContent, item.body, item.pageHtml].find(
-      (v) => typeof v === 'string' && (v as string).length > 0
-    ) as string | undefined;
-
-  if (htmlField) {
-    return { html: htmlField, source: 'apify-html' };
+  const html = item && typeof item.html === 'string' ? item.html : '';
+  if (!html) {
+    throw new Error(
+      `Apify cheerio-scraper returned no html (keys: ${item ? Object.keys(item).join(',') : 'none'})`
+    );
   }
-
-  // No raw HTML returned — synthesise from metadata + text so we at least get
-  // brand context (tech-stack/signals will be limited).
-  const meta = (item.metadata ?? {}) as Record<string, unknown>;
-  const title = typeof meta.title === 'string' ? meta.title : '';
-  const description = typeof meta.description === 'string' ? meta.description : '';
-  const text = typeof item.text === 'string' ? item.text : '';
-  const synth = `<!doctype html><html><head><title>${title}</title><meta name="description" content="${description.replace(
-    /"/g,
-    '&quot;'
-  )}"></head><body><h1>${title}</h1>${text}</body></html>`;
-  logger.warn('Apify returned no raw HTML — used synth doc', {
-    url,
-    itemKeys: Object.keys(item).join(','),
-  });
-  return { html: synth, source: 'apify-synth' };
+  return { html, source: 'apify-html' };
 }
 
 /** Fetch homepage HTML via the Jina reader proxy (r.jina.ai). */
@@ -331,9 +318,10 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
   const url = `https://${domain}`;
   logger.info('Crawling homepage', { url });
 
-  // Limit parse to first 200KB — meta/hero content is always in the <head> and early <body>
+  // Cap parse size to bound regex cost, but keep it large — tech-stack pixels
+  // and signal keywords can appear late in the <body>.
   const fetched = await fetchHomepageHtml(url);
-  const html = fetched.html.slice(0, 200_000);
+  const html = fetched.html.slice(0, 600_000);
 
   const seo_title = extractTitle(html);
   const meta_description = extractMetaContent(html, 'description', 'name');
