@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface MetaAds {
   advertiser_name: string | null;
@@ -317,7 +317,176 @@ function ResearchBriefBody({ text }: { text: string }) {
   );
 }
 
-const NAV = ['Search', 'Dashboard', 'Watchlist', 'Reports', 'Credits'];
+const NAV: { label: string; view: View }[] = [
+  { label: 'Search', view: 'search' },
+  { label: 'Watchlist', view: 'watchlist' },
+  { label: 'Top Movers', view: 'movers' },
+];
+
+type View = 'search' | 'watchlist' | 'movers';
+
+interface WatchlistItem {
+  id: number;
+  domain: string;
+  brand_name: string | null;
+  list_name: string;
+}
+
+const WATCHLISTS = ['Prospects', 'Clients', 'Competitors'];
+
+function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
+  const [items, setItems] = useState<WatchlistItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/watchlist');
+      const d = await r.json();
+      setItems(d.items ?? []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+
+  const remove = async (domain: string, list_name: string) => {
+    await fetch('/api/watchlist', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, list_name }),
+    });
+    load();
+  };
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Watchlists</h1>
+      {loading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {WATCHLISTS.map((list) => {
+            const inList = items.filter((i) => i.list_name === list);
+            return (
+              <Card key={list} title={`${list} (${inList.length})`}>
+                {inList.length === 0 ? (
+                  <p className="text-sm text-gray-400">No companies yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {inList.map((it) => (
+                      <li key={it.id} className="flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => onSelect(it.domain)}
+                          className="text-sm text-indigo-600 hover:text-indigo-800 text-left truncate"
+                        >
+                          {it.brand_name || it.domain}
+                        </button>
+                        <button
+                          onClick={() => remove(it.domain, list)}
+                          className="text-xs text-gray-400 hover:text-red-500 shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface Mover {
+  domain: string;
+  growth_score: number;
+  growth_momentum: string | null;
+  active_meta_ads: number;
+  active_google_ads: number;
+  ad_growth_pct: number | null;
+  revenue_range: string | null;
+}
+
+function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
+  const [movers, setMovers] = useState<Mover[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/top-movers');
+        const d = await r.json();
+        setMovers(d.movers ?? []);
+      } catch {
+        setMovers([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Top Movers</h1>
+      <p className="text-sm text-gray-500 -mt-3">
+        Analyzed companies ranked by Growth Momentum and ad activity. Grows richer as more domains
+        are analyzed.
+      </p>
+      {loading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : movers.length === 0 ? (
+        <Card>
+          <p className="text-sm text-gray-400">
+            No companies analyzed yet. Analyze a few domains to populate the leaderboard.
+          </p>
+        </Card>
+      ) : (
+        <Card>
+          <div className="divide-y divide-gray-100">
+            {movers.map((m, i) => (
+              <div key={m.domain} className="flex items-center gap-4 py-3">
+                <div className="w-6 text-center text-sm font-bold text-gray-400">{i + 1}</div>
+                <button
+                  onClick={() => onSelect(m.domain)}
+                  className="flex-1 text-left text-sm font-medium text-indigo-600 hover:text-indigo-800 truncate"
+                >
+                  {m.domain}
+                </button>
+                {m.growth_momentum && (
+                  <span className={`text-xs font-semibold ${momentumColor(m.growth_momentum)}`}>
+                    {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] ?? ''}
+                  </span>
+                )}
+                <span className="w-16 text-right text-sm text-gray-700">
+                  {m.active_meta_ads} ads
+                </span>
+                {m.ad_growth_pct != null && (
+                  <span
+                    className={`w-14 text-right text-xs font-medium ${m.ad_growth_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {m.ad_growth_pct >= 0 ? '+' : ''}
+                    {m.ad_growth_pct}%
+                  </span>
+                )}
+                <span className="w-10 text-right text-sm font-bold text-gray-900">
+                  {m.growth_score}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 export default function Home() {
   const [domain, setDomain] = useState('');
@@ -326,11 +495,40 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [view, setView] = useState<View>('search');
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [savedTo, setSavedTo] = useState<string | null>(null);
+
+  async function saveCompany(list_name: string) {
+    if (!result) return;
+    setSaveOpen(false);
+    try {
+      await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain: result.domain,
+          brand_name: result.meta_ads?.advertiser_name ?? null,
+          list_name,
+        }),
+      });
+      setSavedTo(list_name);
+      setTimeout(() => setSavedTo(null), 2500);
+    } catch {
+      /* noop */
+    }
+  }
 
   async function analyze(e: React.FormEvent) {
     e.preventDefault();
     if (!domain.trim() || loading) return;
-    const q = domain.trim();
+    await runAnalyze(domain.trim());
+  }
+
+  async function runAnalyze(q: string) {
+    if (loading) return;
+    setView('search');
+    setDomain(q);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -419,15 +617,16 @@ export default function Home() {
           <span className="font-semibold text-white">Growth Signals</span>
         </div>
         <nav className="space-y-1">
-          {NAV.map((item, i) => (
-            <div
-              key={item}
-              className={`rounded-lg px-3 py-2 text-sm ${
-                i === 0 ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-200'
+          {NAV.map((item) => (
+            <button
+              key={item.label}
+              onClick={() => setView(item.view)}
+              className={`block w-full text-left rounded-lg px-3 py-2 text-sm ${
+                view === item.view ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
-              {item}
-            </div>
+              {item.label}
+            </button>
           ))}
         </nav>
         <div className="mt-auto pt-6 text-xs text-gray-500">
@@ -461,6 +660,10 @@ export default function Home() {
         </div>
 
         <div className="px-6 py-6 max-w-6xl mx-auto">
+          {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
+          {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}
+          {view === 'search' && (
+          <>
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 mb-6">
               {error}
@@ -513,6 +716,27 @@ export default function Home() {
                   >
                     ↗ Visit Website
                   </a>
+                  <div className="relative">
+                    <button
+                      onClick={() => setSaveOpen((s) => !s)}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      {savedTo ? `✓ Saved to ${savedTo}` : '☆ Save Company'}
+                    </button>
+                    {saveOpen && (
+                      <div className="absolute right-0 mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg z-20 py-1">
+                        {WATCHLISTS.map((l) => (
+                          <button
+                            key={l}
+                            onClick={() => saveCompany(l)}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            Add to {l}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={copyBrief}
                     className={`rounded-lg px-4 py-2 text-sm font-medium ${
@@ -1025,6 +1249,8 @@ export default function Home() {
             <div className="text-center text-gray-400 py-24">
               Enter a domain above to generate a GTM intelligence report.
             </div>
+          )}
+          </>
           )}
         </div>
       </main>
