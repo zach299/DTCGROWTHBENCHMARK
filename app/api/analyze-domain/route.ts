@@ -448,11 +448,7 @@ export async function POST(request: Request) {
     let meta: MetaAdsSignals | null = null;
     let crawlResult: Awaited<ReturnType<typeof crawlHomepage>> | null = null;
     let crawlError: string | null = null;
-    let metaError: string | null = company.facebook_url
-      ? process.env.APIFY_TOKEN
-        ? null
-        : 'APIFY_TOKEN not set'
-      : 'no facebook_url on record in master_database';
+    let metaError: string | null = process.env.APIFY_TOKEN ? null : 'APIFY_TOKEN not set';
 
     // Strip a leading "www." so ad-library lookups search the real brand
     // (e.g. www.amazon.com -> amazon.com / "amazon", not "www").
@@ -461,7 +457,7 @@ export async function POST(request: Request) {
 
     const [metaSettled, crawlSettled, googleSettled, linkedinSettled] =
       await Promise.allSettled([
-        company.facebook_url && process.env.APIFY_TOKEN
+        process.env.APIFY_TOKEN
           ? fetchMetaAdsSignals(company.facebook_url, company.domain)
           : Promise.resolve(null),
         crawlHomepage(company.domain),

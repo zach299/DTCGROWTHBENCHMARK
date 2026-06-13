@@ -123,12 +123,17 @@ async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
  *      though we only sample up to `count` items.
  */
 export async function fetchMetaAdsSignals(
-  facebookUrl: string,
+  facebookUrl: string | null,
   brandDomain?: string
 ): Promise<MetaAdsSignals> {
-  const pageName = extractFacebookPageName(facebookUrl);
+  // Prefer the Facebook page slug; fall back to the brand name from the domain
+  // when no facebook_url is on record (many master_database rows lack it).
+  let pageName = facebookUrl ? extractFacebookPageName(facebookUrl) : '';
+  if (!pageName && brandDomain) {
+    pageName = brandDomain.replace(/^www\./i, '').split('.')[0];
+  }
   if (!pageName) {
-    throw new Error(`Could not extract page name from facebook URL: ${facebookUrl}`);
+    throw new Error('Could not determine a brand name to search the Ad Library');
   }
 
   // Step 1: keyword search to discover the brand's page_id. We only need to
