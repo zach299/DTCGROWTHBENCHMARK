@@ -48,9 +48,9 @@ const TECH_FINGERPRINTS: { name: string; category: string; pattern: RegExp }[] =
   // --- 1. Ad Platforms (which paid channels they actually run) ---
   { name: 'Meta', category: 'Ad Platform', pattern: /connect\.facebook\.net|fbevents\.js|fbq\(/i },
   { name: 'Google Ads', category: 'Ad Platform', pattern: /googleadservices\.com|googlesyndication\.com|google_conversion|gtag\/js\?id=AW-|\bAW-\d{8,}/i },
-  { name: 'TikTok', category: 'Ad Platform', pattern: /analytics\.tiktok\.com|ttq\.load|ttq\.track/i },
-  { name: 'Pinterest', category: 'Ad Platform', pattern: /pintrk\(|s\.pinimg\.com|ct\.pinterest\.com/i },
-  { name: 'Snapchat', category: 'Ad Platform', pattern: /snaptr\(|sc-static\.net|tr\.snapchat\.com/i },
+  { name: 'TikTok', category: 'Ad Platform', pattern: /analytics\.tiktok\.com|ttq\.load|ttq\.track|ttq\.page|TiktokAnalyticsObject|tiktok[-_]?pixel/i },
+  { name: 'Pinterest', category: 'Ad Platform', pattern: /pintrk\(|pintrk\.load|s\.pinimg\.com|ct\.pinterest\.com|pinterest[-_]?tag/i },
+  { name: 'Snapchat', category: 'Ad Platform', pattern: /snaptr\(|sc-static\.net|tr\.snapchat\.com|snap[-_]?pixel/i },
   { name: 'Reddit', category: 'Ad Platform', pattern: /redditstatic\.com\/ads|rdt\(|pixel\.reddit/i },
   { name: 'X (Twitter)', category: 'Ad Platform', pattern: /static\.ads-twitter\.com|twq\(|analytics\.twitter\.com/i },
   { name: 'The Trade Desk', category: 'Ad Platform', pattern: /adsrvr\.org|thetradedesk/i },
