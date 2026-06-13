@@ -376,9 +376,10 @@ const NAV: { label: string; view: View }[] = [
   { label: 'Search', view: 'search' },
   { label: 'My Accounts', view: 'watchlist' },
   { label: 'Bulk Enrichment', view: 'bulk' },
+  { label: 'Import Data', view: 'import' },
 ];
 
-type View = 'search' | 'watchlist' | 'movers' | 'bulk';
+type View = 'search' | 'watchlist' | 'movers' | 'bulk' | 'import';
 
 interface WatchlistItem {
   id: number;
@@ -604,6 +605,199 @@ interface BulkStats {
 }
 
 const COST_PER_DOMAIN = 0.01;
+
+// Streaming CSV import for master_database. Reads the file in the browser,
+// parses it incrementally (handles quoted fields with commas/newlines), and
+// POSTs rows to /api/import-master in chunks — so a 100k or 14M-row export
+// uploads steadily without the Supabase dashboard importer's size limit.
+const IMPORT_COLUMNS = [
+  'domain', 'average_product_price', 'categories', 'combined_followers',
+  'company_location', 'estimated_yearly_sales', 'facebook_url',
+  'instagram_url', 'platform', 'tiktok_url',
+];
+
+function ImportView() {
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mapped, setMapped] = useState<string[]>([]);
+  const [prog, setProg] = useState({ read: 0, upserted: 0, skipped: 0, failed: 0 });
+
+  // Minimal RFC-4180 incremental parser. Feed it text chunks; it calls onRow
+  // for each complete record. Quotes, escaped quotes (""), and commas/newlines
+  // inside quotes are handled.
+  function makeParser(onRow: (cells: string[]) => void) {
+    let field = '';
+    let row: string[] = [];
+    let inQuotes = false;
+    let prevQuote = false;
+    return {
+      push(chunk: string) {
+        for (let i = 0; i < chunk.length; i++) {
+          const c = chunk[i];
+          if (inQuotes) {
+            if (c === '"') { prevQuote = true; inQuotes = false; }
+            else field += c;
+          } else if (prevQuote && c === '"') {
+            field += '"'; inQuotes = true; prevQuote = false;
+          } else {
+            prevQuote = false;
+            if (c === '"') inQuotes = true;
+            else if (c === ',') { row.push(field); field = ''; }
+            else if (c === '\n') { row.push(field); onRow(row); row = []; field = ''; }
+            else if (c !== '\r') field += c;
+          }
+        }
+      },
+      end() { if (field.length || row.length) { row.push(field); onRow(row); } },
+    };
+  }
+
+  async function handleFile(file: File) {
+    setRunning(true);
+    setDone(false);
+    setError(null);
+    setMapped([]);
+    setProg({ read: 0, upserted: 0, skipped: 0, failed: 0 });
+
+    let header: string[] | null = null;
+    let colIdx: { name: string; idx: number }[] = [];
+    let read = 0, upserted = 0, skipped = 0, failed = 0;
+    let batch: Record<string, string | null>[] = [];
+    const BATCH = 500;
+
+    // Send rows in slices of BATCH (<= the API's 1000-row cap). If `all` is
+    // false, leave a partial (< BATCH) tail in the buffer for the next chunk.
+    const flush = async (all: boolean) => {
+      while (batch.length >= BATCH || (all && batch.length > 0)) {
+        const rows = batch.slice(0, BATCH);
+        batch = batch.slice(BATCH);
+        try {
+          const r = await fetch('/api/import-master', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows }),
+          });
+          const d = await r.json();
+          if (r.ok) { upserted += d.upserted ?? 0; skipped += d.skipped ?? 0; }
+          else failed += rows.length;
+        } catch {
+          failed += rows.length;
+        }
+        setProg({ read, upserted, skipped, failed });
+      }
+    };
+
+    const onRow = (cells: string[]) => {
+      if (!header) {
+        header = cells.map((h) => h.trim().toLowerCase());
+        colIdx = header
+          .map((name, idx) => ({ name, idx }))
+          .filter((c) => IMPORT_COLUMNS.includes(c.name));
+        setMapped(colIdx.map((c) => c.name));
+        if (!colIdx.some((c) => c.name === 'domain')) {
+          setError(`CSV has no "domain" column. Found: ${header.join(', ')}`);
+          throw new Error('no domain column');
+        }
+        return;
+      }
+      read++;
+      const rec: Record<string, string | null> = {};
+      for (const { name, idx } of colIdx) {
+        const v = (cells[idx] ?? '').trim();
+        rec[name] = v === '' ? null : v;
+      }
+      batch.push(rec);
+    };
+
+    const parser = makeParser(onRow);
+    const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+    try {
+      while (true) {
+        const { done: rdone, value } = await reader.read();
+        if (rdone) break;
+        try { parser.push(value); } catch { setRunning(false); return; }
+        // Flush full batches as they accumulate, keeping the partial tail.
+        await flush(false);
+        setProg({ read, upserted, skipped, failed });
+      }
+      parser.end();
+      await flush(true);
+      setDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const fmt = (n: number) => n.toLocaleString();
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Import Data</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Upload a Store Leads CSV export into the company database. The file is read and
+          uploaded in batches right here in the browser — no size limit, no Supabase dashboard.
+          Rows are matched on <code className="text-gray-700">domain</code>, so re-uploading
+          safely updates existing companies instead of erroring.
+        </p>
+      </div>
+
+      <label
+        className={`block rounded-lg border-2 border-dashed p-8 text-center cursor-pointer transition ${
+          running ? 'border-gray-200 bg-gray-50 pointer-events-none opacity-60' : 'border-indigo-300 hover:border-indigo-400 hover:bg-indigo-50'
+        }`}
+      >
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          disabled={running}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+        <div className="text-sm font-medium text-gray-700">
+          {running ? 'Importing…' : 'Click to choose a CSV file'}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">
+          Recognized columns: {IMPORT_COLUMNS.join(', ')}
+        </div>
+      </label>
+
+      {mapped.length > 0 && (
+        <div className="text-xs text-gray-500">
+          Mapping columns: <span className="text-gray-800">{mapped.join(', ')}</span>
+        </div>
+      )}
+
+      {(running || done) && (
+        <div className="rounded-lg border border-gray-200 p-4 space-y-2">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-gray-900">{fmt(prog.read)}</div>
+              <div className="text-xs text-gray-500">rows read</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">{fmt(prog.upserted)}</div>
+              <div className="text-xs text-gray-500">imported</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-400">{fmt(prog.skipped + prog.failed)}</div>
+              <div className="text-xs text-gray-500">skipped / failed</div>
+            </div>
+          </div>
+          {done && (
+            <div className="text-sm text-green-700 font-medium text-center pt-2">
+              ✓ Done — {fmt(prog.upserted)} companies imported.
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <div className="text-sm text-red-600">{error}</div>}
+    </div>
+  );
+}
 
 function BulkView() {
   const [s, setS] = useState<BulkStats | null>(null);
@@ -1024,6 +1218,7 @@ export default function Home() {
           {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
           {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}
           {view === 'bulk' && <BulkView />}
+          {view === 'import' && <ImportView />}
           {view === 'search' && (
           <>
           {error && (
