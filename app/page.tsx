@@ -254,6 +254,26 @@ function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
 }
 
+function LoadingChart({ label = 'Loading Growth Signals…' }: { label?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 gap-5">
+      <svg width="200" height="100" viewBox="0 0 200 100">
+        <polyline
+          points="0,88 30,78 60,82 90,52 120,58 150,28 200,8"
+          fill="none"
+          stroke="#4f46e5"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="gs-draw"
+        />
+        <circle cx="200" cy="8" r="4" fill="#4f46e5" className="gs-pulse" />
+      </svg>
+      <div className="text-sm font-medium text-gray-500">{label}</div>
+    </div>
+  );
+}
+
 function trendArrow(d: TrendValue['direction']): string {
   if (d === 'up') return '↑';
   if (d === 'down') return '↓';
@@ -352,9 +372,9 @@ function ResearchBriefBody({ text }: { text: string }) {
 }
 
 const NAV: { label: string; view: View }[] = [
-  { label: 'Search', view: 'search' },
-  { label: 'Watchlist', view: 'watchlist' },
   { label: 'Top Movers', view: 'movers' },
+  { label: 'Search', view: 'search' },
+  { label: 'My Accounts', view: 'watchlist' },
   { label: 'Bulk Enrichment', view: 'bulk' },
 ];
 
@@ -365,6 +385,14 @@ interface WatchlistItem {
   domain: string;
   brand_name: string | null;
   list_name: string;
+  latest?: { growth_momentum?: string | null; growth_score?: number | null } | null;
+}
+
+function movementArrow(momentum?: string | null): { arrow: string; color: string } {
+  if (momentum === 'Exploding' || momentum === 'Accelerating') return { arrow: '↑', color: 'text-green-600' };
+  if (momentum === 'Scaling') return { arrow: '→', color: 'text-gray-400' };
+  if (momentum === 'Emerging' || momentum === 'Dormant') return { arrow: '↓', color: 'text-red-500' };
+  return { arrow: '·', color: 'text-gray-300' };
 }
 
 const WATCHLISTS = ['Prospects', 'Clients', 'Competitors'];
@@ -400,7 +428,7 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Watchlists</h1>
+      <h1 className="text-2xl font-bold text-gray-900">My Accounts</h1>
       {loading ? (
         <Skeleton className="h-24 w-full" />
       ) : (
@@ -417,9 +445,12 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
                       <li key={it.id} className="flex items-center justify-between gap-2">
                         <button
                           onClick={() => onSelect(it.domain)}
-                          className="text-sm text-indigo-600 hover:text-indigo-800 text-left truncate"
+                          className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 text-left truncate"
                         >
-                          {it.brand_name || it.domain}
+                          <span className={`font-bold ${movementArrow(it.latest?.growth_momentum).color}`}>
+                            {movementArrow(it.latest?.growth_momentum).arrow}
+                          </span>
+                          <span className="truncate">{it.brand_name || it.domain}</span>
                         </button>
                         <button
                           onClick={() => remove(it.domain, list)}
@@ -441,18 +472,31 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
 }
 
 interface Mover {
+  rank: number;
   domain: string;
-  growth_score: number;
-  growth_momentum: string | null;
+  company_name: string | null;
   active_meta_ads: number;
-  active_google_ads: number;
-  ad_growth_pct: number | null;
-  revenue_range: string | null;
+  creative_velocity: string | null;
+  growth_momentum: string | null;
+  landing_pages_count: number;
+  percentile_top: number | null;
+  last_enriched_at: string | null;
+}
+
+function relativeTime(iso: string | null): string {
+  if (!iso) return '—';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
 }
 
 function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
   const [movers, setMovers] = useState<Mover[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [sort, setSort] = useState<'rank' | 'ads'>('rank');
 
   useEffect(() => {
     (async () => {
@@ -460,6 +504,7 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
         const r = await fetch('/api/top-movers');
         const d = await r.json();
         setMovers(d.movers ?? []);
+        setTotal(d.total ?? 0);
       } catch {
         setMovers([]);
       } finally {
@@ -468,53 +513,76 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
     })();
   }, []);
 
+  const sorted = [...movers].sort((a, b) =>
+    sort === 'ads' ? b.active_meta_ads - a.active_meta_ads : a.rank - b.rank
+  );
+
+  const brand = (m: Mover) => m.company_name || m.domain.replace(/^www\./, '').split('.')[0];
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Top Movers</h1>
-      <p className="text-sm text-gray-500 -mt-3">
-        Analyzed companies ranked by Growth Momentum and ad activity. Grows richer as more domains
-        are analyzed.
-      </p>
+    <div className="space-y-5">
+      <div className="flex items-end justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Fastest Growing Brands</h1>
+          <p className="text-sm text-gray-500">
+            {total.toLocaleString()} companies tracked · ranked by live Meta ad activity
+          </p>
+        </div>
+        <div className="flex gap-1 text-xs">
+          {(['rank', 'ads'] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => setSort(k)}
+              className={`rounded-md px-3 py-1.5 font-medium ${
+                sort === k ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'
+              }`}
+            >
+              {k === 'rank' ? 'Growth Rank' : 'Meta Ads'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {loading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : movers.length === 0 ? (
+        <Skeleton className="h-64 w-full" />
+      ) : sorted.length === 0 ? (
         <Card>
           <p className="text-sm text-gray-400">
-            No companies analyzed yet. Analyze a few domains to populate the leaderboard.
+            No companies enriched yet. Run a batch in Bulk Enrichment to build the leaderboard.
           </p>
         </Card>
       ) : (
         <Card>
           <div className="divide-y divide-gray-100">
-            {movers.map((m, i) => (
-              <div key={m.domain} className="flex items-center gap-4 py-3">
-                <div className="w-6 text-center text-sm font-bold text-gray-400">{i + 1}</div>
-                <button
-                  onClick={() => onSelect(m.domain)}
-                  className="flex-1 text-left text-sm font-medium text-indigo-600 hover:text-indigo-800 truncate"
-                >
-                  {m.domain}
-                </button>
+            {sorted.map((m) => (
+              <button
+                key={m.domain}
+                onClick={() => onSelect(m.domain)}
+                className="flex w-full items-center gap-4 py-2.5 text-left hover:bg-gray-50 -mx-2 px-2 rounded-lg"
+              >
+                <div className="w-10 text-sm font-bold text-gray-400">#{m.rank}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-900 truncate capitalize">{brand(m)}</div>
+                  <div className="text-xs text-gray-400 truncate">{m.domain}</div>
+                </div>
+                {m.percentile_top != null && (
+                  <span className="hidden sm:inline rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                    Top {m.percentile_top}%
+                  </span>
+                )}
                 {m.growth_momentum && (
-                  <span className={`text-xs font-semibold ${momentumColor(m.growth_momentum)}`}>
-                    {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] ?? ''}
+                  <span className={`hidden md:inline text-xs font-semibold ${momentumColor(m.growth_momentum)}`}>
+                    {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] || ''}
                   </span>
                 )}
-                <span className="w-16 text-right text-sm text-gray-700">
-                  {m.active_meta_ads} ads
-                </span>
-                {m.ad_growth_pct != null && (
-                  <span
-                    className={`w-14 text-right text-xs font-medium ${m.ad_growth_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}
-                  >
-                    {m.ad_growth_pct >= 0 ? '+' : ''}
-                    {m.ad_growth_pct}%
-                  </span>
-                )}
-                <span className="w-10 text-right text-sm font-bold text-gray-900">
-                  {m.growth_score}
-                </span>
-              </div>
+                <div className="w-20 text-right">
+                  <div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div>
+                  <div className="text-[10px] text-gray-400">Meta ads</div>
+                </div>
+                <div className="hidden lg:block w-20 text-right text-[11px] text-gray-400">
+                  {relativeTime(m.last_enriched_at)}
+                </div>
+              </button>
             ))}
           </div>
         </Card>
@@ -729,7 +797,7 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<View>('search');
+  const [view, setView] = useState<View>('movers');
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedTo, setSavedTo] = useState<string | null>(null);
   const [lens, setLens] = useState('measurement');
@@ -751,6 +819,34 @@ export default function Home() {
     if (d) runAnalyze(d.trim());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Growth Rank — where this company sits in the enriched dataset.
+  const [rankInfo, setRankInfo] = useState<{
+    rank: number | null;
+    total: number;
+    percentile_top: number | null;
+  } | null>(null);
+  const metaAdsForRank = result?.meta_ads?.active_ads_count;
+  useEffect(() => {
+    if (metaAdsForRank == null || !result?.domain) {
+      setRankInfo(null);
+      return;
+    }
+    let cancelled = false;
+    fetch('/api/rank', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: result.domain, active_meta_ads: metaAdsForRank }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setRankInfo(d);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [result?.domain, metaAdsForRank]);
 
   async function saveCompany(list_name: string) {
     if (!result) return;
@@ -924,9 +1020,7 @@ export default function Home() {
             </div>
           )}
 
-          {loading && !result && (
-            <div className="text-center text-gray-400 py-24">Analyzing {domain}…</div>
-          )}
+          {loading && !result && <LoadingChart />}
 
           {result && (
             <div className="space-y-6">
@@ -1004,16 +1098,30 @@ export default function Home() {
 
               {/* Stat row */}
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-wrap divide-x divide-gray-100">
-                <StatCard label="Growth Score">
-                  {hasAnalysis ? (
+                <StatCard label="Growth Rank">
+                  {!hasAnalysis ? (
+                    <Skeleton className="h-9 w-16" />
+                  ) : rankInfo?.rank ? (
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-bold text-gray-900">#{rankInfo.rank}</span>
+                        {rankInfo.percentile_top != null && (
+                          <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                            Top {rankInfo.percentile_top}%
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        Score {gScore} · of {rankInfo.total.toLocaleString()} tracked
+                      </div>
+                    </div>
+                  ) : (
                     <div className="flex items-center gap-2">
                       <span className={`text-3xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
                       <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
                         {scoreLabel(gScore)}
                       </span>
                     </div>
-                  ) : (
-                    <Skeleton className="h-9 w-16" />
                   )}
                 </StatCard>
                 <StatCard label="Paid Media Intensity">
