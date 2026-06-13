@@ -292,7 +292,7 @@ export async function POST(request: Request) {
     let meta: MetaAdsSignals | null = null;
     if (company.facebook_url && process.env.APIFY_TOKEN) {
       try {
-        meta = await fetchMetaAdsSignals(company.facebook_url);
+        meta = await fetchMetaAdsSignals(company.facebook_url, company.domain);
       } catch (err) {
         logger.error('Meta Ads fetch failed — falling back to heuristic scoring', {
           error: err instanceof Error ? err.message : String(err),

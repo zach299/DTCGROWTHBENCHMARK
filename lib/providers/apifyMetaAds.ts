@@ -61,35 +61,21 @@ function toIsoDate(v: unknown): string | null {
   return null;
 }
 
-/**
- * Fetch Meta Ad Library signals for a brand via Apify.
- *
- * Uses the run-sync-get-dataset-items endpoint so no polling is needed.
- *
- * TODO: The actor input shape and dataset item field names below are based on
- * the documented schema of `curious_coder~facebook-ads-library-scraper` and
- * may need adjustment after a real run. Field mapping is intentionally
- * defensive (multiple plausible field names with fallbacks).
- */
-export async function fetchMetaAdsSignals(facebookUrl: string): Promise<MetaAdsSignals> {
+// Normalize for fuzzy name matching: "The Ridge" -> "theridge"
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
   const token = process.env.APIFY_TOKEN;
   if (!token) {
     throw new Error('APIFY_TOKEN environment variable is required');
   }
   const actorId = process.env.APIFY_META_ADS_ACTOR_ID || DEFAULT_ACTOR_ID;
 
-  const pageName = extractFacebookPageName(facebookUrl);
-  if (!pageName) {
-    throw new Error(`Could not extract page name from facebook URL: ${facebookUrl}`);
-  }
-
-  // Search the Ad Library by page name (keyword search) — we don't have a
-  // numeric page ID, so view_all_page_id is not an option here.
-  const adLibraryUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q="${pageName}"&search_type=keyword_unordered`;
-
   const input = {
     urls: [{ url: adLibraryUrl }],
-    count: 100,
+    count,
     scrapeAdDetails: false,
     period: '',
   };
@@ -98,8 +84,6 @@ export async function fetchMetaAdsSignals(facebookUrl: string): Promise<MetaAdsS
     `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
     // This actor requires <= 512MB per input URL.
     `?token=${encodeURIComponent(token)}&timeout=120&memory=512`;
-
-  logger.info('Fetching Meta Ads signals via Apify', { actorId, pageName });
 
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -123,20 +107,98 @@ export async function fetchMetaAdsSignals(facebookUrl: string): Promise<MetaAdsS
   if (list.length === 0 && errorItems.length > 0) {
     throw new Error(`Apify actor error: ${String(errorItems[0].error).slice(0, 300)}`);
   }
+  return list;
+}
 
-  // --- Defensive mapping over plausible field names ---
+/**
+ * Fetch Meta Ad Library signals for a brand via Apify.
+ *
+ * Two-step approach so we only count the brand's own ads (a keyword search
+ * also returns unrelated advertisers):
+ *   1. Keyword-search the Ad Library for the brand's facebook page name and
+ *      find the matching page_id among the results.
+ *   2. Re-query scoped to that page_id (view_all_page_id), which returns only
+ *      that advertiser's ads. Each item carries a `total` field = the true
+ *      number of active ads for the query, so we get the real count even
+ *      though we only sample up to `count` items.
+ */
+export async function fetchMetaAdsSignals(
+  facebookUrl: string,
+  brandDomain?: string
+): Promise<MetaAdsSignals> {
+  const pageName = extractFacebookPageName(facebookUrl);
+  if (!pageName) {
+    throw new Error(`Could not extract page name from facebook URL: ${facebookUrl}`);
+  }
+
+  // Step 1: keyword search to discover the brand's page_id.
+  const searchUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q="${pageName}"&search_type=keyword_unordered`;
+  logger.info('Apify Meta Ads: keyword search', { pageName });
+  const searchItems = await runActor(searchUrl, 50);
+
+  const targetNorms = new Set<string>([norm(pageName)]);
+  if (brandDomain) {
+    const base = brandDomain.split('.')[0];
+    if (base) targetNorms.add(norm(base));
+  }
+
+  // Count ads per page_id among items whose page_name fuzzy-matches the brand.
+  const pageIdVotes = new Map<string, { votes: number; name: string }>();
+  for (const item of searchItems) {
+    const itemPageName = asString(item.page_name) ?? asString(item.pageName);
+    const itemPageId = asString(item.page_id) ?? asString(item.pageId);
+    if (!itemPageName || !itemPageId) continue;
+    const n = norm(itemPageName);
+    const matches = [...targetNorms].some(
+      (t) => t.length >= 3 && (n.includes(t) || t.includes(n))
+    );
+    if (matches) {
+      const cur = pageIdVotes.get(itemPageId) ?? { votes: 0, name: itemPageName };
+      cur.votes += 1;
+      pageIdVotes.set(itemPageId, cur);
+    }
+  }
+
+  let scopedItems: Item[];
+  let advertiserFallback: string | null = null;
+
+  const best = [...pageIdVotes.entries()].sort((a, b) => b[1].votes - a[1].votes)[0];
+  if (best) {
+    const [pageId, { name }] = best;
+    advertiserFallback = name;
+    // Step 2: page-scoped query — only this advertiser's ads.
+    const pageUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&view_all_page_id=${pageId}&search_type=page`;
+    logger.info('Apify Meta Ads: page-scoped query', { pageId, name });
+    scopedItems = await runActor(pageUrl, 50);
+    if (scopedItems.length === 0) scopedItems = searchItems;
+  } else {
+    // Could not identify the brand's page among search results; fall back to
+    // the raw keyword results (may include unrelated advertisers).
+    logger.warn('Apify Meta Ads: no page_id match, using keyword results', { pageName });
+    scopedItems = searchItems;
+  }
+
+  // --- Map fields (defensive across plausible field names) ---
   let advertiserName: string | null = null;
   const adCopy: string[] = [];
   const creatives: string[] = [];
   const landingPages = new Set<string>();
   const platforms = new Set<string>();
   let firstSeen: string | null = null;
+  let totalAds: number | null = null;
 
-  for (const item of list) {
+  for (const item of scopedItems) {
+    // `total` = total results for the (page-scoped) query, i.e. the real
+    // active ad count even though we only fetched a sample.
+    const t = item.total;
+    if (typeof t === 'number' && Number.isFinite(t) && t > (totalAds ?? 0)) {
+      totalAds = t;
+    }
+
     advertiserName =
       advertiserName ??
-      asString(item.pageName) ??
       asString(item.page_name) ??
+      asString(item.pageName) ??
       asString(get(item, ['advertiser', 'name']));
 
     const copy =
@@ -193,13 +255,13 @@ export async function fetchMetaAdsSignals(facebookUrl: string): Promise<MetaAdsS
   }
 
   return {
-    advertiser_name: advertiserName,
-    active_ads_count: list.length,
+    advertiser_name: advertiserName ?? advertiserFallback,
+    active_ads_count: totalAds ?? scopedItems.length,
     unique_landing_pages: [...landingPages].slice(0, 25),
     sample_ad_copy: adCopy,
     sample_creatives: creatives,
     first_seen_date: firstSeen,
     platforms: [...platforms],
-    raw: items,
+    raw: scopedItems,
   };
 }
