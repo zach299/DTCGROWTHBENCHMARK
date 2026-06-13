@@ -63,7 +63,7 @@ const TECH_FINGERPRINTS: { name: string; category: string; pattern: RegExp }[] =
   { name: 'Shopify', category: 'Backend', pattern: /cdn\.shopify\.com|myshopify\.com|Shopify\.theme|shopify/i },
   { name: 'WooCommerce', category: 'Backend', pattern: /woocommerce/i },
   { name: 'BigCommerce', category: 'Backend', pattern: /bigcommerce/i },
-  { name: 'Magento', category: 'Backend', pattern: /magento|mage\/|static\/version.*\/frontend/i },
+  { name: 'Magento', category: 'Backend', pattern: /\bmagento\b|Magento_/i },
   { name: 'Salesforce Commerce', category: 'Backend', pattern: /demandware|salesforce commerce|\bsfcc\b/i },
   { name: 'Wix', category: 'Backend', pattern: /wixstatic|parastorage/i },
   { name: 'Squarespace', category: 'Backend', pattern: /squarespace/i },
@@ -311,6 +311,9 @@ async function fetchViaApify(url: string): Promise<FetchedHtml> {
 async function fetchViaJina(url: string): Promise<FetchedHtml> {
   const headers: Record<string, string> = {
     'X-Return-Format': 'html',
+    // 'direct' fetches the raw HTTP response without a headless browser — far
+    // faster, and still includes the <script>/<meta> tags we fingerprint.
+    'X-Engine': 'direct',
     Accept: 'text/html,*/*;q=0.8',
     'User-Agent': READER_UA,
   };

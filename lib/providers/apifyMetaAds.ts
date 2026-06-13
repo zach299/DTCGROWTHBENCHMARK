@@ -131,10 +131,12 @@ export async function fetchMetaAdsSignals(
     throw new Error(`Could not extract page name from facebook URL: ${facebookUrl}`);
   }
 
-  // Step 1: keyword search to discover the brand's page_id.
+  // Step 1: keyword search to discover the brand's page_id. We only need to
+  // find one matching item, and the brand's own ads rank early — so a small
+  // sample is enough and keeps this (sequential) first run fast.
   const searchUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q="${pageName}"&search_type=keyword_unordered`;
   logger.info('Apify Meta Ads: keyword search', { pageName });
-  const searchItems = await runActor(searchUrl, 50);
+  const searchItems = await runActor(searchUrl, 20);
 
   const targetNorms = new Set<string>([norm(pageName)]);
   if (brandDomain) {
