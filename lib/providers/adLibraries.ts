@@ -155,25 +155,24 @@ export async function fetchLinkedInAds(
   companyName?: string
 ): Promise<AdPlatformResult> {
   const query = companyName || domain.split('.')[0];
-  const libraryUrl = `https://www.linkedin.com/ad-library/search?keyword=${encodeURIComponent(query)}`;
+  // Actor expects a LinkedIn Ad Library URL keyed on accountOwner.
+  const searchUrl = `https://www.linkedin.com/ad-library/search?accountOwner=${encodeURIComponent(
+    query
+  )}&countries=US`;
+  const libraryUrl = searchUrl;
   const actorId = process.env.APIFY_LINKEDIN_ADS_ACTOR_ID;
   if (!actorId) return unknownResult('LinkedIn', libraryUrl, 'APIFY_LINKEDIN_ADS_ACTOR_ID not set');
   try {
     const list = await runActorJson(
       actorId,
       {
-        startUrls: [{ url: libraryUrl }],
-        keyword: query,
-        companyName: query,
-        query,
-        url: libraryUrl,
-        maxItems: 20,
-        maxResults: 20,
+        startUrls: [{ url: searchUrl }],
+        // Skip per-ad detail scraping — we only need counts + basics, and it
+        // keeps the run fast enough to finish within the sync window.
+        skipDetails: true,
+        proxyConfiguration: { useApifyProxy: true, apifyProxyCountry: 'US' },
       },
-      // LinkedIn ads are rarely run by DTC brands and this actor is slow;
-      // cap the wait so it never bottlenecks the whole report. If it doesn't
-      // finish in time it degrades to status 'unknown'.
-      80_000
+      90_000
     );
     logger.info('LinkedIn ads fetched', { query, items: list.length });
     const result = mapAds('LinkedIn', list, libraryUrl);
