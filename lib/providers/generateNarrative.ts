@@ -122,7 +122,11 @@ function formatMoney(n: number): string {
 export function templateNarrative(input: NarrativeInput): string {
   const name =
     input.meta?.advertiser_name ?? input.domain.replace(/\.(com|co|io|shop|store).*$/i, '');
-  const category = input.categories?.split(/[,;|/]/)[0]?.trim() || 'direct-to-consumer';
+  const category =
+    input.categories
+      ?.split(/[,;|/]/)
+      .map((c) => c.trim())
+      .find(Boolean) || 'direct-to-consumer';
   const ads = input.meta?.active_ads_count ?? 0;
   const landingPages = input.meta?.unique_landing_pages.length ?? 0;
   const sales = parseNumeric(input.estimated_yearly_sales);

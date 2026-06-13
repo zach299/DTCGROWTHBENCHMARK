@@ -306,6 +306,7 @@ export async function POST(request: Request) {
     // Run Meta Ads fetch + homepage crawl in parallel
     let meta: MetaAdsSignals | null = null;
     let crawlResult: Awaited<ReturnType<typeof crawlHomepage>> | null = null;
+    let crawlError: string | null = null;
 
     const [metaSettled, crawlSettled] = await Promise.allSettled([
       company.facebook_url && process.env.APIFY_TOKEN
@@ -328,12 +329,11 @@ export async function POST(request: Request) {
     if (crawlSettled.status === 'fulfilled') {
       crawlResult = crawlSettled.value;
     } else {
-      logger.error('Homepage crawl failed', {
-        error:
-          crawlSettled.reason instanceof Error
-            ? crawlSettled.reason.message
-            : String(crawlSettled.reason),
-      });
+      crawlError =
+        crawlSettled.reason instanceof Error
+          ? crawlSettled.reason.message
+          : String(crawlSettled.reason);
+      logger.error('Homepage crawl failed', { error: crawlError });
     }
 
     const analysis = computeScores(company, meta);
@@ -385,6 +385,7 @@ export async function POST(request: Request) {
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
         landing_page_signals: landingPageSignals,
+        crawl_error: crawlError,
         growth_narrative,
         growth_prompt,
       },
@@ -407,6 +408,7 @@ export async function POST(request: Request) {
       brand_context: crawlResult?.brand_context ?? null,
       website_signals: crawlResult?.website_signals ?? null,
       landing_page_signals: landingPageSignals,
+      crawl_error: crawlError,
       growth_narrative,
       growth_prompt,
       cached: false,
