@@ -604,6 +604,7 @@ function BulkView() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ job_id, domains_processed: processed, domains_successful: ok, domains_failed: failed, estimated_cost: Math.round(processed * COST_PER_DOMAIN * 100) / 100 }),
             });
+            loadStats(); // keep the stat cards live during the run
           }
         }
       };
