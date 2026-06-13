@@ -28,9 +28,48 @@ export interface HomepageCrawlResult {
   brand_context: BrandContext;
   website_signals: WebsiteSignals;
   tech_stack: DetectedTech[];
+  server_side_signals: string[]; // CAPI / server-side tracking infrastructure
   crawl_source: string; // debug: 'jina' | 'apify-html'
   crawl_html_len: number; // debug: length of HTML we parsed
   crawl_note: string | null; // debug: failed-primary error, if any
+}
+
+/**
+ * Detect server-side / CAPI infrastructure.
+ *
+ * True Conversions API traffic is server-to-server and invisible to a page
+ * crawl. But the tooling that powers CAPI leaves client-side fingerprints, so
+ * we infer it: a GTM/gtag loader on a first-party domain (server-side GTM),
+ * Stape/Littledata hosts, or Elevar (a server-side conversion platform that
+ * feeds Meta CAPI / TikTok Events API / Google Enhanced Conversions).
+ */
+function detectServerSide(html: string): string[] {
+  const signals: string[] = [];
+
+  // Server-side GTM: gtm.js / gtag/js loaded from a non-Google first-party host.
+  const loaders = [...html.matchAll(/https?:\/\/([a-z0-9.-]+)\/(?:gtm\.js|gtag\/js)\?id=/gi)];
+  for (const m of loaders) {
+    const host = m[1].toLowerCase();
+    if (!/(?:^|\.)(?:googletagmanager|google-analytics|google)\.com$/.test(host)) {
+      signals.push(`Server-side GTM via first-party endpoint (${host})`);
+      break;
+    }
+  }
+
+  if (/stape\.io|gtm-msr\.appspot|sgtm\./i.test(html)) {
+    signals.push('Stape / server-side GTM host');
+  }
+  if (/littledata/i.test(html)) {
+    signals.push('Littledata server-side tracking');
+  }
+  if (/elevar/i.test(html)) {
+    signals.push('Elevar server-side conversions (Meta CAPI / TikTok Events API capable)');
+  }
+  if (/blotout/i.test(html)) {
+    signals.push('Blotout first-party / server-side tracking');
+  }
+
+  return [...new Set(signals)];
 }
 
 // Category display/priority order. Detected tech is grouped in this order so
@@ -414,6 +453,9 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
   const htmlTech = matchFingerprints(html);
   const gtmTech = await detectPixelsViaGtm(html);
   const tech_stack = dedupeTech([...htmlTech, ...gtmTech]);
+  // CAPI / server-side tracking infrastructure (workaround: the CAPI calls
+  // themselves are server-side and invisible; we infer from the tooling).
+  const server_side_signals = detectServerSide(html);
 
   return {
     brand_context: {
@@ -426,6 +468,7 @@ export async function crawlHomepage(domain: string): Promise<HomepageCrawlResult
       hero_subheadline,
     },
     website_signals,
+    server_side_signals,
     tech_stack,
     crawl_source: fetched.source,
     crawl_html_len: html.length,

@@ -19,6 +19,7 @@ export interface NarrativeInput {
   brand_context: BrandContext | null;
   website_signals: WebsiteSignals | null;
   tech_stack: DetectedTech[];
+  server_side_signals: string[];
   campaign_themes: string[];
 }
 
@@ -94,6 +95,12 @@ function buildContextBlock(input: NarrativeInput): string {
     lines.push('');
     lines.push('Detected Tech Stack:');
     input.tech_stack.forEach((t) => lines.push(`  - ${t.name} (${t.category})`));
+  }
+
+  if (input.server_side_signals.length) {
+    lines.push('');
+    lines.push('Server-Side / CAPI Infrastructure:');
+    input.server_side_signals.forEach((s) => lines.push(`  - ${s}`));
   }
 
   if (input.campaign_themes.length) {
@@ -202,6 +209,16 @@ export function templateNarrative(input: NarrativeInput): string {
   } else if (adPlatforms.length >= 2) {
     sentences.push(
       `They advertise across ${adPlatforms.slice(0, 5).join(', ')} but show no dedicated measurement platform in their stack.`
+    );
+  }
+
+  // 4b. Server-side / CAPI infrastructure — strong qualification signal.
+  if (input.server_side_signals.length) {
+    sentences.push(
+      `Evidence of server-side conversion tracking (${input.server_side_signals
+        .map((s) => s.replace(/\s*\(.*\)$/, ''))
+        .slice(0, 2)
+        .join(', ')}) suggests they are already investing in durable, privacy-resilient measurement infrastructure.`
     );
   }
 

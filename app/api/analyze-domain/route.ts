@@ -198,6 +198,7 @@ type RawResponse = {
   brand_context?: BrandContext | null;
   website_signals?: WebsiteSignals | null;
   tech_stack?: DetectedTech[] | null;
+  server_side_signals?: string[] | null;
   landing_page_signals?: { campaign_themes: string[] } | null;
   growth_narrative?: string | null;
   growth_prompt?: string | null;
@@ -298,6 +299,7 @@ export async function POST(request: Request) {
         brand_context: raw.brand_context ?? null,
         website_signals: raw.website_signals ?? null,
         tech_stack: raw.tech_stack ?? null,
+        server_side_signals: raw.server_side_signals ?? null,
         landing_page_signals: raw.landing_page_signals ?? null,
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
@@ -373,6 +375,7 @@ export async function POST(request: Request) {
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
         tech_stack: techStack,
+        server_side_signals: crawlResult?.server_side_signals ?? [],
         campaign_themes: campaignThemes,
       });
       growth_narrative = narrative.growth_narrative;
@@ -401,6 +404,7 @@ export async function POST(request: Request) {
         brand_context: crawlResult?.brand_context ?? null,
         website_signals: crawlResult?.website_signals ?? null,
         tech_stack: techStack,
+        server_side_signals: crawlResult?.server_side_signals ?? null,
         landing_page_signals: landingPageSignals,
         crawl_error: crawlError,
         crawl_source: crawlResult?.crawl_source ?? null,
@@ -428,6 +432,7 @@ export async function POST(request: Request) {
       brand_context: crawlResult?.brand_context ?? null,
       website_signals: crawlResult?.website_signals ?? null,
       tech_stack: techStack,
+      server_side_signals: crawlResult?.server_side_signals ?? null,
       landing_page_signals: landingPageSignals,
       crawl_error: crawlError,
       crawl_source: crawlResult?.crawl_source ?? null,
