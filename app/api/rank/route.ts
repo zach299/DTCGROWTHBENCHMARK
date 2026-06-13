@@ -1,13 +1,22 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
+import { normalizeDomain } from '@/lib/utils/domain';
+import { fetchAllEnriched } from '../benchmarks/route';
+import { channelBenchmarks, rankOf, percentileTop, type BenchRow } from '@/lib/benchmarks';
 
-// Single company's Growth Rank within the enriched dataset (ranked by active
-// Meta ads — the core, broadly-available signal).
-export const maxDuration = 15;
+// A company's full ranking picture: overall Growth Rank, category rank, and
+// per-channel (Meta/Google/LinkedIn) benchmarks vs. the enriched dataset.
+export const maxDuration = 20;
 
 export async function POST(request: Request) {
-  let body: { domain?: string; active_meta_ads?: number };
+  let body: {
+    domain?: string;
+    active_meta_ads?: number;
+    google_ads?: number;
+    linkedin_ads?: number;
+    primary_category?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -15,31 +24,65 @@ export async function POST(request: Request) {
   }
   const supabase = createServiceClient();
   try {
-    let target = body.active_meta_ads;
-    if (target == null && body.domain) {
+    const domain = body.domain ? normalizeDomain(body.domain) : null;
+
+    // Resolve the company's own numbers (prefer stored, fall back to provided).
+    let meta = Number(body.active_meta_ads ?? 0);
+    let google = Number(body.google_ads ?? 0);
+    let linkedin = Number(body.linkedin_ads ?? 0);
+    let category = body.primary_category ?? null;
+    let growthScore = 0;
+    if (domain) {
       const { data } = await supabase
         .from('company_meta_signals')
-        .select('active_meta_ads')
-        .eq('domain', body.domain.replace(/^www\./i, ''))
+        .select('active_meta_ads, google_ads, linkedin_ads, primary_category, growth_score')
+        .eq('domain', domain)
         .maybeSingle();
-      target = Number(data?.active_meta_ads ?? 0);
+      if (data) {
+        meta = Number(data.active_meta_ads ?? meta);
+        google = Number(data.google_ads ?? google);
+        linkedin = Number(data.linkedin_ads ?? linkedin);
+        category = (data.primary_category as string) ?? category;
+        growthScore = Number(data.growth_score ?? 0);
+      }
     }
-    target = Number(target ?? 0);
 
-    const { count: total } = await supabase
-      .from('company_meta_signals')
-      .select('*', { count: 'exact', head: true });
-    const { count: higher } = await supabase
-      .from('company_meta_signals')
-      .select('*', { count: 'exact', head: true })
-      .gt('active_meta_ads', target);
+    const all = await fetchAllEnriched(supabase);
+    const total = all.length;
+    const peers: BenchRow[] = category ? all.filter((r) => r.primary_category === category) : [];
 
-    const t = total ?? 0;
-    const rank = (higher ?? 0) + 1;
-    const percentile_top = t > 0 ? Math.max(1, Math.ceil((rank / t) * 100)) : null;
-    return NextResponse.json({ rank, total: t, percentile_top });
+    // Overall Growth Rank by growth_score (falls back to meta ads if no score).
+    const scoreField: keyof BenchRow = growthScore > 0 ? 'growth_score' : 'active_meta_ads';
+    const myScore = growthScore > 0 ? growthScore : meta;
+    const allScores = all.map((r) => Number(r[scoreField]) || 0);
+    const rank = rankOf(myScore, allScores);
+    const percentile_top = percentileTop(myScore, allScores);
+
+    // Category Growth Rank.
+    let category_rank: number | null = null;
+    let category_total: number | null = null;
+    let category_percentile_top: number | null = null;
+    if (category && peers.length) {
+      const peerScores = peers.map((r) => Number(r[scoreField]) || 0);
+      category_rank = rankOf(myScore, peerScores);
+      category_total = peers.length;
+      category_percentile_top = percentileTop(myScore, peerScores);
+    }
+
+    const channels = channelBenchmarks({ meta, google, linkedin }, all, peers);
+
+    return NextResponse.json({
+      rank,
+      total,
+      percentile_top,
+      primary_category: category,
+      category_rank,
+      category_total,
+      category_percentile_top,
+      channels,
+    });
   } catch (err) {
     logger.error('rank failed', { error: err instanceof Error ? err.message : String(err) });
-    return NextResponse.json({ rank: null, total: 0, percentile_top: null });
+    return NextResponse.json({ rank: null, total: 0, percentile_top: null, channels: [] });
   }
 }

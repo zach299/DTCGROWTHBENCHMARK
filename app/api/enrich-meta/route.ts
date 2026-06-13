@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { fetchMetaAdsSignals } from '@/lib/providers/apifyMetaAds';
 import { inferCampaignThemes } from '@/lib/providers/crawlHomepage';
-import { normalizeDomain } from '@/lib/utils/domain';
+import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
+import { normalizeCategory } from '@/lib/categories';
+import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
 
 // Meta-only enrichment for the bulk dataset. No website crawl, no Google /
 // LinkedIn, no AI. Returns the computed Meta signals; the bulk script persists
@@ -15,7 +17,19 @@ const bodySchema = z.object({
   domain: z.string().min(1),
   facebook_url: z.string().nullable().optional(),
   company_name: z.string().nullable().optional(),
+  google_ads: z.number().nullable().optional(),
+  linkedin_ads: z.number().nullable().optional(),
+  source: z.string().nullable().optional(),
 });
+
+function parseNum(v: unknown): number {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  if (typeof v === 'string') {
+    const n = parseFloat(v.replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
 
 function velocityLabel(count: number): string {
   if (count >= 100) return 'High';
@@ -52,30 +66,90 @@ export async function POST(request: Request) {
   }
 
   const domain = normalizeDomain(parsed.data.domain);
+  const supabase = createServiceClient();
   try {
     const meta = await fetchMetaAdsSignals(parsed.data.facebook_url ?? null, domain);
     const count = meta.active_ads_count;
     const themes = inferCampaignThemes(meta.unique_landing_pages);
+    const lpCount = meta.unique_landing_pages.length;
+    const googleAds = parseNum(parsed.data.google_ads);
+    const linkedinAds = parseNum(parsed.data.linkedin_ads);
+    const paidIntensity = activityLevel(count);
+
+    // Pull seed attributes from master_database (categories / sales / followers)
+    // to feed category normalization and the revenue model.
+    let categoriesRaw: string | null = null;
+    let seedRevenue = 0;
+    let followers = 0;
+    try {
+      const { data: seed } = await supabase
+        .from('master_database')
+        .select('categories, estimated_yearly_sales, combined_followers')
+        .in('domain', domainCandidates(domain))
+        .limit(1);
+      const row = seed?.[0] as Record<string, unknown> | undefined;
+      if (row) {
+        categoriesRaw = (row.categories as string) ?? null;
+        seedRevenue = parseNum(row.estimated_yearly_sales);
+        followers = parseNum(row.combined_followers);
+      }
+    } catch {
+      /* seed is optional */
+    }
+
+    const cat = normalizeCategory(categoriesRaw);
+    const momentum = computeMomentum({
+      metaAds: count,
+      googleAds,
+      linkedinAds,
+      landingPages: lpCount,
+      campaignDiversity: themes.length,
+      revenue: seedRevenue,
+      paidIntensity,
+    });
+    const revenue = modelRevenue({
+      seedRevenue,
+      metaAds: count,
+      googleAds,
+      linkedinAds,
+      landingPages: lpCount,
+      campaignDiversity: themes.length,
+      followers,
+      paidIntensity,
+    });
+    const spend = spendBand({ metaAds: count, googleAds, linkedinAds, paidIntensity });
 
     const signals = {
       domain,
-      company_name: parsed.data.company_name ?? null,
+      company_name: parsed.data.company_name ?? meta.advertiser_name ?? null,
       active_meta_ads: count,
+      google_ads: googleAds,
+      linkedin_ads: linkedinAds,
       creative_count: count, // each active ad is a distinct creative
       creative_velocity: velocityLabel(count),
-      campaign_diversity: diversityLabel(meta.unique_landing_pages.length),
-      ad_activity_level: activityLevel(count),
+      campaign_diversity: diversityLabel(lpCount),
+      ad_activity_level: paidIntensity,
       landing_pages: meta.unique_landing_pages,
       campaign_themes: themes,
       sample_ad_copy: meta.sample_ad_copy,
       first_seen_date: meta.first_seen_date,
       last_seen_date: null,
       raw_meta_response: meta.raw,
+      // Phase 8 derived intelligence
+      primary_category: cat.primary_category,
+      subcategory: cat.subcategory,
+      category_confidence: cat.confidence,
+      growth_score: momentum.score,
+      growth_momentum: momentum.label,
+      estimated_revenue_range: revenue.range,
+      revenue_confidence: revenue.confidence,
+      spend_band: spend,
+      followers: followers || null,
+      source: parsed.data.source ?? 'bulk',
     };
 
     // Persist so a UI/browser-driven run doesn't need direct DB access.
     try {
-      const supabase = createServiceClient();
       await supabase
         .from('company_meta_signals')
         .upsert({ ...signals, last_enriched_at: new Date().toISOString() }, { onConflict: 'domain' });
