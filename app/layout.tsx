@@ -18,8 +18,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/" className="font-bold text-gray-900">Growth Signals</a>
             <div className="flex gap-6 text-sm text-gray-600">
               <a href="/" className="hover:text-gray-900">Lookup</a>
-              <a href="/admin/imports" className="hover:text-gray-900">Imports</a>
-              <a href="/admin/jobs" className="hover:text-gray-900">Jobs</a>
             </div>
           </div>
         </nav>
