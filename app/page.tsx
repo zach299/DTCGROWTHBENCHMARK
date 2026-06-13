@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { buildResearchBrief, type ResearchBriefInput } from '@/lib/researchBrief';
+import { LENSES, getLens } from '@/lib/lenses';
+import type { Momentum } from '@/lib/intelligence';
 
 interface MetaAds {
   advertiser_name: string | null;
@@ -214,6 +217,37 @@ function truncate(s: string, max: number): string {
 function truncateUrl(url: string, max = 48): string {
   const d = url.replace(/^https?:\/\/(www\.)?/, '');
   return d.length > max ? d.slice(0, max) + '…' : d;
+}
+
+function adCount(result: AnalysisResult, platform: string): number {
+  const p = (result.ad_platforms ?? []).find((x) => x.platform === platform);
+  return p && p.status === 'active' ? p.ads_count ?? 0 : 0;
+}
+function briefInputFrom(result: AnalysisResult): ResearchBriefInput | null {
+  if (!result.meta_ads && !result.ad_platforms) return null;
+  const brand =
+    result.meta_ads?.advertiser_name || result.domain.replace(/^www\./i, '').split('.')[0];
+  return {
+    brandName: brand,
+    domain: result.domain,
+    category: cstr(result.company, 'categories'),
+    location: cstr(result.company, 'company_location'),
+    revenueRange: result.revenue_range ?? 'Unknown',
+    revenueConfidence: result.revenue_confidence ?? 'Low',
+    momentum: (result.growth_momentum ?? 'Scaling') as Momentum,
+    paidIntensity: result.paid_media_signal ?? 'low',
+    metaAds: result.meta_ads?.active_ads_count ?? 0,
+    googleAds: adCount(result, 'Google'),
+    linkedinAds: adCount(result, 'LinkedIn'),
+    landingPages: result.meta_ads?.unique_landing_pages ?? [],
+    campaignThemes: result.landing_page_signals?.campaign_themes ?? [],
+    sampleAdCopy: result.meta_ads?.sample_ad_copy ?? [],
+    positioning:
+      result.brand_context?.hero_subheadline ?? result.brand_context?.meta_description ?? null,
+    techStack: result.tech_stack ?? [],
+    serverSide: result.server_side_signals ?? [],
+    websiteSignals: result.website_signals ?? null,
+  };
 }
 
 function Skeleton({ className = '' }: { className?: string }) {
@@ -498,6 +532,17 @@ export default function Home() {
   const [view, setView] = useState<View>('search');
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedTo, setSavedTo] = useState<string | null>(null);
+  const [lens, setLens] = useState('measurement');
+
+  // Brief + outreach angle regenerate instantly from the selected lens, with
+  // no re-fetch (all data is already loaded).
+  const briefInput = result ? briefInputFrom(result) : null;
+  const lensObj = getLens(lens);
+  const displayedBrief = briefInput
+    ? buildResearchBrief(briefInput, lens)
+    : (result?.research_brief ?? null);
+  const lensAngle = briefInput ? lensObj.angle(briefInput) : result?.recommended_angle;
+  const lensHook = briefInput ? lensObj.hook(briefInput) : result?.outbound_hook;
 
   async function saveCompany(list_name: string) {
     if (!result) return;
@@ -589,7 +634,7 @@ export default function Home() {
   }
 
   async function copyBrief() {
-    const text = result?.research_brief || result?.growth_prompt;
+    const text = displayedBrief || result?.growth_prompt;
     if (!text) return;
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -930,23 +975,37 @@ export default function Home() {
                   )}
 
                   {/* Research Brief */}
-                  {result.research_brief ? (
+                  {displayedBrief ? (
                     <Card
                       title="✦ Research Brief"
                       action={
-                        <button
-                          onClick={copyBrief}
-                          className={`text-xs rounded-md px-3 py-1 font-medium ${
-                            copied
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                          }`}
-                        >
-                          {copied ? '✓ Copied' : '⧉ Copy Brief'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={lens}
+                            onChange={(e) => setLens(e.target.value)}
+                            className="text-xs rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            title="Tailor the brief to what you sell"
+                          >
+                            {LENSES.map((l) => (
+                              <option key={l.id} value={l.id}>
+                                {l.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={copyBrief}
+                            className={`text-xs rounded-md px-3 py-1 font-medium ${
+                              copied
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            }`}
+                          >
+                            {copied ? '✓ Copied' : '⧉ Copy'}
+                          </button>
+                        </div>
                       }
                     >
-                      <ResearchBriefBody text={result.research_brief} />
+                      <ResearchBriefBody text={displayedBrief} />
                     </Card>
                   ) : (
                     enriching && (
@@ -1211,11 +1270,13 @@ export default function Home() {
                       </div>
                       <div>
                         <div className="text-xs text-gray-500 mb-0.5">Best Angle</div>
-                        <div className="text-gray-900 font-medium">{result.recommended_angle}</div>
+                        <div className="text-gray-900 font-medium">
+                          {lensAngle ?? result.recommended_angle}
+                        </div>
                       </div>
                       <div>
                         <div className="text-xs text-gray-500 mb-0.5">Outbound Hook</div>
-                        <div className="text-gray-700">{result.outbound_hook}</div>
+                        <div className="text-gray-700">{lensHook ?? result.outbound_hook}</div>
                       </div>
                     </div>
                     <button

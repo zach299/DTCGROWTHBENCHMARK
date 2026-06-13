@@ -236,18 +236,19 @@ export function templateNarrative(input: NarrativeInput): string {
     );
   }
 
-  // 5. GTM opportunity
+  // 5. Objective closing observation (no sales pitch — the lens-driven angle
+  // lives in the Research Brief).
   if (attribution.length) {
     sentences.push(
-      `Since they already invest in measurement tooling, the opening is a displacement conversation around accuracy, incrementality, and consolidated reporting.`
+      `With dedicated measurement tooling already in place, this is a sophisticated, data-driven growth operation.`
     );
   } else if (ads >= 25 || landingPages >= 5) {
     sentences.push(
-      `The combination of high creative volume and multiple landing pages points to growing attribution complexity and a likely need for stronger measurement and incrementality infrastructure.`
+      `The combination of high creative volume and multiple landing pages reflects an increasingly complex, multi-front acquisition operation.`
     );
   } else {
     sentences.push(
-      `As they scale paid channels, the main GTM opportunity is helping them measure incrementality and attribute spend accurately before inefficiency compounds.`
+      `The brand is in an earlier, building phase of its paid growth.`
     );
   }
 

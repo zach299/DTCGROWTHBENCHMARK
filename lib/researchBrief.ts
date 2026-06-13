@@ -1,4 +1,5 @@
 import type { Momentum } from './intelligence';
+import { getLens } from './lenses';
 
 export interface ResearchBriefInput {
   brandName: string;
@@ -60,7 +61,8 @@ const MOMENTUM_PROSE: Record<Momentum, string> = {
  * Deterministic, analyst-style research brief built from the enriched data.
  * Reads like a human wrote it — not generic AI sales copy.
  */
-export function buildResearchBrief(i: ResearchBriefInput): string {
+export function buildResearchBrief(i: ResearchBriefInput, lensId?: string | null): string {
+  const lens = getLens(lensId);
   const L: string[] = [];
   const activePlatforms: string[] = [];
   if (i.metaAds > 0) activePlatforms.push(`Meta (${i.metaAds})`);
@@ -137,55 +139,34 @@ export function buildResearchBrief(i: ResearchBriefInput): string {
       ? `Beyond paid, the brand shows ${growthBits.join(', ')} — all consistent with a company investing in durable growth, not just short-term acquisition.`
       : 'Growth appears primarily paid-acquisition driven, with limited additional expansion signals on-site.'
   );
-  if (dedicatedMmm.length) {
-    L.push(
-      `Their measurement stack already includes ${dedicatedMmm.join(' and ')}${
-        i.serverSide.length ? ', plus server-side / CAPI infrastructure' : ''
-      } — they clearly value attribution and are willing to invest in it.`
-    );
-  } else if (i.serverSide.length) {
-    L.push('There are signs of server-side conversion tracking, indicating measurement maturity.');
-  }
+  // Objective stack note (no editorializing).
+  const stackBits: string[] = [];
+  if (measurement.length) stackBits.push(`${measurement.join(' / ')} for measurement`);
+  if (lifecycle.length) stackBits.push(`${lifecycle.join(' / ')} for lifecycle`);
+  if (i.serverSide.length) stackBits.push('server-side / CAPI tracking');
+  if (stackBits.length) L.push(`Their stack includes ${stackBits.join(', ')}.`);
 
-  // 6. Likely priorities
+  // 6. Likely priorities (objective — what the company likely cares about)
   L.push('\n## Likely Priorities');
   const priorities: string[] = [];
   if (i.metaAds >= 50 || i.googleAds >= 25)
     priorities.push('scaling paid spend efficiently while protecting ROAS/MER');
   if (i.landingPages.length >= 5) priorities.push('conversion-rate optimization across many landing pages');
-  if (dedicatedMmm.length || i.serverSide.length)
-    priorities.push('accuracy and consolidation of measurement across channels');
   if (lifecycle.length) priorities.push('lifecycle / retention to improve LTV');
   if (i.websiteSignals?.international) priorities.push('international growth');
+  if (activePlatforms.length === 1) priorities.push('diversifying beyond a single paid channel');
   L.push(
     (priorities.length ? priorities : ['establishing a repeatable, measurable acquisition engine'])
       .map((p) => `- ${p}`)
       .join('\n')
   );
 
-  // 7. Potential risks
+  // 7 + 8: lens-driven (framed for what YOU sell).
   L.push('\n## Potential Risks');
-  const risks: string[] = [];
-  if (i.metaAds >= 100 && activePlatforms.length === 1)
-    risks.push('heavy concentration on a single platform (Meta) — diversification and incrementality risk');
-  if (i.metaAds >= 50 && !dedicatedMmm.length)
-    risks.push('high spend with no dedicated measurement platform — attribution blind spots');
-  if (i.landingPages.length >= 8)
-    risks.push('funnel sprawl across many pages can make true incremental performance hard to read');
-  risks.push('rising CPMs and signal loss make last-click attribution increasingly unreliable at this scale');
-  L.push(risks.slice(0, 4).map((r) => `- ${r}`).join('\n'));
+  L.push(lens.risks(i).map((r) => `- ${r}`).join('\n'));
 
-  // 8. Recommended outreach angle
   L.push('\n## Recommended Outreach Angle');
-  L.push(
-    dedicatedMmm.length
-      ? `Lead with a displacement / consolidation conversation: they already run ${dedicatedMmm.join(' and ')}, so the wedge is accuracy, incrementality, and a single source of truth across ${
-          activePlatforms.length >= 2 ? activePlatforms.map((p) => p.split(' ')[0]).join(', ') : 'their channels'
-        } — not "do you measure?"`
-      : `Lead with measurement maturity: they are spending meaningfully on paid (${activePlatforms.join(
-          ', '
-        ) || 'paid channels'}) but show no dedicated attribution platform — the wedge is helping them see which campaigns are truly incremental before inefficiency compounds.`
-  );
+  L.push(lens.angle(i));
 
   return L.join('\n');
 }

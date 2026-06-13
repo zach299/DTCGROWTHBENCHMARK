@@ -85,6 +85,7 @@ export const maxDuration = 300;
 
 const bodySchema = z.object({
   domain: z.string().min(1),
+  lens: z.string().optional(),
 });
 
 interface MasterRow {
@@ -571,7 +572,7 @@ export async function POST(request: Request) {
       techStack,
       serverSide: crawlResult?.server_side_signals ?? [],
       websiteSignals: crawlResult?.website_signals ?? null,
-    });
+    }, parsed.data.lens);
 
     // Generate narrative — uses Claude when ANTHROPIC_API_KEY is set,
     // otherwise a deterministic template. Never throws.
