@@ -170,8 +170,10 @@ export async function fetchLinkedInAds(
         maxItems: 20,
         maxResults: 20,
       },
-      // This actor is slow (LinkedIn) — give the sync run more headroom.
-      220_000
+      // LinkedIn ads are rarely run by DTC brands and this actor is slow;
+      // cap the wait so it never bottlenecks the whole report. If it doesn't
+      // finish in time it degrades to status 'unknown'.
+      80_000
     );
     logger.info('LinkedIn ads fetched', { query, items: list.length });
     const result = mapAds('LinkedIn', list, libraryUrl);
