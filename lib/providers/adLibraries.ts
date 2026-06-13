@@ -50,7 +50,8 @@ async function runActorJson(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Apify ${actorId} failed (${res.status}): ${body.slice(0, 200)}`);
+    // Never echo actorId — it may hold a misconfigured secret. Redact.
+    throw new Error(`Apify actor request failed (${res.status}): ${body.slice(0, 160)}`);
   }
   const items = (await res.json()) as unknown;
   const list = Array.isArray(items) ? (items as Record<string, unknown>[]) : [];
@@ -135,7 +136,7 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
     });
     logger.info('Google ads fetched', { domain, items: list.length });
     const result = mapAds('Google', list, libraryUrl);
-    result.note = `actor=${actorId} items=${list.length}`;
+    result.note = `items=${list.length}`;
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -167,7 +168,7 @@ export async function fetchLinkedInAds(
     });
     logger.info('LinkedIn ads fetched', { query, items: list.length });
     const result = mapAds('LinkedIn', list, libraryUrl);
-    result.note = `actor=${actorId} items=${list.length}`;
+    result.note = `items=${list.length}`;
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
