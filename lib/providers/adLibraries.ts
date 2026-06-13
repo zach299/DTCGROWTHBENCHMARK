@@ -164,15 +164,20 @@ export async function fetchLinkedInAds(
   const actorId = process.env.APIFY_LINKEDIN_ADS_ACTOR_ID;
   if (!actorId) return unknownResult('LinkedIn', libraryUrl, 'APIFY_LINKEDIN_ADS_ACTOR_ID not set');
   try {
-    const list = await runActorJson(actorId, {
-      startUrls: [{ url: libraryUrl }],
-      keyword: query,
-      companyName: query,
-      query,
-      url: libraryUrl,
-      maxItems: 20,
-      maxResults: 20,
-    });
+    const list = await runActorJson(
+      actorId,
+      {
+        startUrls: [{ url: libraryUrl }],
+        keyword: query,
+        companyName: query,
+        query,
+        url: libraryUrl,
+        maxItems: 20,
+        maxResults: 20,
+      },
+      // This actor is slow (LinkedIn) — give the sync run more headroom.
+      220_000
+    );
     logger.info('LinkedIn ads fetched', { query, items: list.length });
     const result = mapAds('LinkedIn', list, libraryUrl);
     result.note = `items=${list.length}`;
