@@ -535,7 +535,7 @@ interface BulkStats {
   pct_with_ads: number;
 }
 
-const COST_PER_DOMAIN = 0.1;
+const COST_PER_DOMAIN = 0.01;
 
 function BulkView() {
   const [s, setS] = useState<BulkStats | null>(null);

@@ -34,7 +34,7 @@ const BATCH_SIZE = Number(process.env.BATCH_SIZE || 100);
 const CONCURRENCY = Number(process.env.CONCURRENCY || 3);
 const RETRIES = Number(process.env.RETRIES || 2);
 const SKIP_DAYS = Number(process.env.SKIP_DAYS || 30);
-const COST_PER_DOMAIN = Number(process.env.COST_PER_DOMAIN || 0.1);
+const COST_PER_DOMAIN = Number(process.env.COST_PER_DOMAIN || 0.01);
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('Missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (.env.local).');
