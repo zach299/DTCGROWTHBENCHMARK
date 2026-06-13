@@ -3,10 +3,13 @@ import { logger } from '@/lib/utils/logger';
 
 export interface SnapshotMetrics {
   active_meta_ads: number;
+  active_google_ads: number;
+  active_linkedin_ads: number;
   landing_pages_count: number;
   estimated_revenue: number;
+  revenue_range: string;
   growth_score: number;
-  northbeam_fit: number;
+  growth_momentum: string;
   paid_media_intensity: string;
   creative_velocity: string;
   campaign_diversity: string;
@@ -62,10 +65,13 @@ export async function writeSnapshot(
       domain,
       snapshot_date,
       active_meta_ads: m.active_meta_ads,
+      active_google_ads: m.active_google_ads,
+      active_linkedin_ads: m.active_linkedin_ads,
       landing_pages_count: m.landing_pages_count,
       estimated_revenue: m.estimated_revenue,
+      revenue_range: m.revenue_range,
       growth_score: m.growth_score,
-      northbeam_fit: m.northbeam_fit,
+      growth_momentum: m.growth_momentum,
       paid_media_intensity: m.paid_media_intensity,
       creative_velocity: m.creative_velocity,
       campaign_diversity: m.campaign_diversity,
@@ -165,4 +171,63 @@ export async function getTrends(
       30
     ),
   };
+}
+
+export interface TimelineEntry {
+  date: string;
+  active_meta_ads: number;
+  active_google_ads: number;
+  active_linkedin_ads: number;
+  landing_pages_count: number;
+  growth_score: number;
+  growth_momentum: string | null;
+  meta_change_pct: number | null; // vs previous entry
+  google_change_pct: number | null;
+}
+
+/** Dated history for the "what changed since last time" timeline. */
+export async function getTimeline(
+  supabase: SupabaseClient,
+  domain: string,
+  limit = 12
+): Promise<TimelineEntry[]> {
+  let rows: Record<string, unknown>[] = [];
+  try {
+    const { data } = await supabase
+      .from('domain_snapshots')
+      .select(
+        'snapshot_date, active_meta_ads, active_google_ads, active_linkedin_ads, landing_pages_count, growth_score, growth_momentum'
+      )
+      .eq('domain', domain)
+      .order('snapshot_date', { ascending: true })
+      .limit(limit);
+    rows = (data ?? []) as Record<string, unknown>[];
+  } catch (err) {
+    logger.error('getTimeline failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  const pct = (curr: number, prev: number | null): number | null => {
+    if (prev == null) return null;
+    if (prev === 0) return curr > 0 ? 100 : 0;
+    return Math.round(((curr - prev) / Math.abs(prev)) * 100);
+  };
+
+  return rows.map((r, idx) => {
+    const prev = idx > 0 ? rows[idx - 1] : null;
+    const meta = Number(r.active_meta_ads ?? 0);
+    const google = Number(r.active_google_ads ?? 0);
+    return {
+      date: String(r.snapshot_date),
+      active_meta_ads: meta,
+      active_google_ads: google,
+      active_linkedin_ads: Number(r.active_linkedin_ads ?? 0),
+      landing_pages_count: Number(r.landing_pages_count ?? 0),
+      growth_score: Number(r.growth_score ?? 0),
+      growth_momentum: r.growth_momentum ? String(r.growth_momentum) : null,
+      meta_change_pct: pct(meta, prev ? Number(prev.active_meta_ads ?? 0) : null),
+      google_change_pct: pct(google, prev ? Number(prev.active_google_ads ?? 0) : null),
+    };
+  });
 }

@@ -17,7 +17,9 @@ import {
   fetchLinkedInAds,
   type AdPlatformResult,
 } from '@/lib/providers/adLibraries';
-import { writeSnapshot, getTrends, type SnapshotMetrics } from '@/lib/trends';
+import { writeSnapshot, getTrends, getTimeline, type SnapshotMetrics } from '@/lib/trends';
+import { computeMomentum, revenueRange } from '@/lib/intelligence';
+import { buildResearchBrief } from '@/lib/researchBrief';
 
 // Cache TTL: ad data (Meta/Google/LinkedIn) is considered fresh for 7 days.
 const CACHE_TTL_DAYS = 7;
@@ -35,36 +37,46 @@ function diversityLabel(n: number): string {
   return 'None';
 }
 
-// Build snapshot metrics + persist a daily snapshot, then compute trends.
+// Build snapshot metrics + persist a daily snapshot, then compute trends + timeline.
 async function snapshotAndTrends(
   supabase: ReturnType<typeof createServiceClient>,
   domain: string,
   vals: {
     active_meta_ads: number;
+    active_google_ads: number;
+    active_linkedin_ads: number;
     landing_pages_count: number;
     estimated_revenue: number;
+    revenue_range: string;
     growth_score: number;
-    northbeam_fit: number;
+    growth_momentum: string;
     paid_media_intensity: string;
   },
   rawMeta: unknown
 ) {
   const metrics: SnapshotMetrics = {
     active_meta_ads: vals.active_meta_ads,
+    active_google_ads: vals.active_google_ads,
+    active_linkedin_ads: vals.active_linkedin_ads,
     landing_pages_count: vals.landing_pages_count,
     estimated_revenue: vals.estimated_revenue,
+    revenue_range: vals.revenue_range,
     growth_score: vals.growth_score,
-    northbeam_fit: vals.northbeam_fit,
+    growth_momentum: vals.growth_momentum,
     paid_media_intensity: vals.paid_media_intensity,
     creative_velocity: velocityLabel(vals.active_meta_ads),
     campaign_diversity: diversityLabel(vals.landing_pages_count),
   };
   await writeSnapshot(supabase, domain, metrics, rawMeta);
-  return getTrends(supabase, domain, {
-    active_meta_ads: vals.active_meta_ads,
-    landing_pages_count: vals.landing_pages_count,
-    growth_score: vals.growth_score,
-  });
+  const [trends, timeline] = await Promise.all([
+    getTrends(supabase, domain, {
+      active_meta_ads: vals.active_meta_ads,
+      landing_pages_count: vals.landing_pages_count,
+      growth_score: vals.growth_score,
+    }),
+    getTimeline(supabase, domain),
+  ]);
+  return { trends, timeline };
 }
 
 // Apify run-sync can take up to ~2 minutes; allow generous function duration.
@@ -259,6 +271,10 @@ type RawResponse = {
   landing_page_signals?: { campaign_themes: string[] } | null;
   growth_narrative?: string | null;
   growth_prompt?: string | null;
+  growth_momentum?: string | null;
+  revenue_range?: string | null;
+  revenue_confidence?: string | null;
+  research_brief?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -351,17 +367,48 @@ export async function POST(request: Request) {
         };
       }
 
-      const trends = await snapshotAndTrends(
+      const cMetaAds = Number(cachedMeta?.active_ads_count ?? 0);
+      const cLanding = Array.isArray(cachedMeta?.unique_landing_pages)
+        ? (cachedMeta!.unique_landing_pages as unknown[]).length
+        : 0;
+      const platformCount = (name: string): number => {
+        const p = (raw.ad_platforms ?? []).find((x) => x?.platform === name);
+        return p && p.status === 'active' ? Number(p.ads_count ?? 0) : 0;
+      };
+      const cGoogle = platformCount('Google');
+      const cLinkedin = platformCount('LinkedIn');
+      const cSales = parseNumeric(company.estimated_yearly_sales);
+      const cThemes = Array.isArray(raw.landing_page_signals?.campaign_themes)
+        ? raw.landing_page_signals!.campaign_themes.length
+        : 0;
+
+      // Prefer stored intelligence; recompute for legacy cached rows.
+      const cMomentum =
+        raw.growth_momentum ??
+        computeMomentum({
+          metaAds: cMetaAds,
+          googleAds: cGoogle,
+          linkedinAds: cLinkedin,
+          landingPages: cLanding,
+          campaignDiversity: cThemes,
+          revenue: cSales,
+          paidIntensity: String(cached.paid_media_signal ?? 'low'),
+        }).label;
+      const cRevenue = raw.revenue_range ?? revenueRange(cSales).range;
+      const cConfidence = raw.revenue_confidence ?? revenueRange(cSales).confidence;
+
+      const { trends, timeline } = await snapshotAndTrends(
         supabase,
         company.domain,
         {
-          active_meta_ads: Number(cachedMeta?.active_ads_count ?? 0),
-          landing_pages_count: Array.isArray(cachedMeta?.unique_landing_pages)
-            ? (cachedMeta!.unique_landing_pages as unknown[]).length
-            : 0,
-          estimated_revenue: parseNumeric(company.estimated_yearly_sales),
+          active_meta_ads: cMetaAds,
+          active_google_ads: cGoogle,
+          active_linkedin_ads: cLinkedin,
+          landing_pages_count: cLanding,
+          estimated_revenue: cSales,
+          revenue_range: cRevenue,
           growth_score: Number(cached.growth_score ?? 0),
-          northbeam_fit: Number(cached.northbeam_fit_score ?? 0),
+          growth_momentum: cMomentum,
           paid_media_intensity: String(cached.paid_media_signal ?? 'low'),
         },
         raw.apify_raw ?? null
@@ -370,8 +417,10 @@ export async function POST(request: Request) {
       return NextResponse.json({
         domain: company.domain,
         growth_score: cached.growth_score,
-        northbeam_fit_score: cached.northbeam_fit_score,
+        growth_momentum: cMomentum,
         paid_media_signal: cached.paid_media_signal,
+        revenue_range: cRevenue,
+        revenue_confidence: cConfidence,
         recommended_buyer: cached.recommended_buyer,
         recommended_angle: cached.recommended_angle,
         outbound_hook: cached.outbound_hook,
@@ -385,7 +434,9 @@ export async function POST(request: Request) {
         landing_page_signals: raw.landing_page_signals ?? null,
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
+        research_brief: raw.research_brief ?? null,
         trends,
+        timeline,
         cache_age_days: Math.round(cacheAgeDays * 10) / 10,
         cached: true,
         company,
@@ -483,6 +534,45 @@ export async function POST(request: Request) {
       ? [...crawlResult.tech_stack]
       : [];
 
+    // --- Phase 4 intelligence: Growth Momentum + revenue range + research brief ---
+    const googleCount = googlePlatform.status === 'active' ? googlePlatform.ads_count ?? 0 : 0;
+    const linkedinCount = linkedinPlatform.status === 'active' ? linkedinPlatform.ads_count ?? 0 : 0;
+    const salesNum = parseNumeric(company.estimated_yearly_sales);
+    const followersNum = parseNumeric(company.combined_followers);
+    const momentum = computeMomentum({
+      metaAds: meta?.active_ads_count ?? 0,
+      googleAds: googleCount,
+      linkedinAds: linkedinCount,
+      landingPages: meta?.unique_landing_pages.length ?? 0,
+      campaignDiversity: campaignThemes.length,
+      revenue: salesNum,
+      paidIntensity: analysis.paid_media_signal,
+    });
+    const revenue = revenueRange(salesNum, salesNum > 0 && followersNum > 0);
+    const research_brief = buildResearchBrief({
+      brandName: meta?.advertiser_name ?? company.domain.replace(/^www\./i, '').split('.')[0],
+      domain: company.domain,
+      category: company.categories,
+      location: company.company_location,
+      revenueRange: revenue.range,
+      revenueConfidence: revenue.confidence,
+      momentum: momentum.label,
+      paidIntensity: analysis.paid_media_signal,
+      metaAds: meta?.active_ads_count ?? 0,
+      googleAds: googleCount,
+      linkedinAds: linkedinCount,
+      landingPages: meta?.unique_landing_pages ?? [],
+      campaignThemes,
+      sampleAdCopy: meta?.sample_ad_copy ?? [],
+      positioning:
+        crawlResult?.brand_context?.hero_subheadline ??
+        crawlResult?.brand_context?.meta_description ??
+        null,
+      techStack,
+      serverSide: crawlResult?.server_side_signals ?? [],
+      websiteSignals: crawlResult?.website_signals ?? null,
+    });
+
     // Generate narrative — uses Claude when ANTHROPIC_API_KEY is set,
     // otherwise a deterministic template. Never throws.
     let growth_narrative: string | null = null;
@@ -539,6 +629,11 @@ export async function POST(request: Request) {
         crawl_note: crawlResult?.crawl_note ?? null,
         growth_narrative,
         growth_prompt,
+        growth_momentum: momentum.label,
+        momentum_score: momentum.score,
+        revenue_range: revenue.range,
+        revenue_confidence: revenue.confidence,
+        research_brief,
       },
     });
 
@@ -546,16 +641,19 @@ export async function POST(request: Request) {
       logger.error('Failed to insert domain analysis', { error: insertError.message });
     }
 
-    // Persist a daily snapshot and compute historical trends.
-    const trends = await snapshotAndTrends(
+    // Persist a daily snapshot and compute historical trends + timeline.
+    const { trends, timeline } = await snapshotAndTrends(
       supabase,
       company.domain,
       {
         active_meta_ads: meta?.active_ads_count ?? 0,
+        active_google_ads: googleCount,
+        active_linkedin_ads: linkedinCount,
         landing_pages_count: meta?.unique_landing_pages.length ?? 0,
-        estimated_revenue: parseNumeric(company.estimated_yearly_sales),
+        estimated_revenue: salesNum,
+        revenue_range: revenue.range,
         growth_score: analysis.growth_score,
-        northbeam_fit: analysis.northbeam_fit_score,
+        growth_momentum: momentum.label,
         paid_media_intensity: analysis.paid_media_signal,
       },
       meta?.raw ?? null
@@ -564,8 +662,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       domain: company.domain,
       growth_score: analysis.growth_score,
-      northbeam_fit_score: analysis.northbeam_fit_score,
+      growth_momentum: momentum.label,
+      momentum_score: momentum.score,
       paid_media_signal: analysis.paid_media_signal,
+      revenue_range: revenue.range,
+      revenue_confidence: revenue.confidence,
       recommended_buyer: analysis.recommended_buyer,
       recommended_angle: analysis.recommended_angle,
       outbound_hook: analysis.outbound_hook,
@@ -583,7 +684,9 @@ export async function POST(request: Request) {
       crawl_note: crawlResult?.crawl_note ?? null,
       growth_narrative,
       growth_prompt,
+      research_brief,
       trends,
+      timeline,
       cached: false,
       company,
     });

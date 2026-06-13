@@ -65,10 +65,27 @@ interface Trends {
   landing_pages: TrendValue;
 }
 
+interface TimelineEntry {
+  date: string;
+  active_meta_ads: number;
+  active_google_ads: number;
+  active_linkedin_ads: number;
+  landing_pages_count: number;
+  growth_score: number;
+  growth_momentum: string | null;
+  meta_change_pct: number | null;
+  google_change_pct: number | null;
+}
+
 interface AnalysisResult {
   domain: string;
   growth_score?: number;
-  northbeam_fit_score?: number;
+  growth_momentum?: string;
+  momentum_score?: number;
+  revenue_range?: string;
+  revenue_confidence?: string;
+  research_brief?: string | null;
+  timeline?: TimelineEntry[] | null;
   paid_media_signal?: string;
   recommended_buyer?: string;
   recommended_angle?: string;
@@ -116,6 +133,25 @@ function formatMoney(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(0)}M`;
   return `$${Math.round(n / 1_000)}K`;
 }
+const MOMENTUM_EMOJI: Record<string, string> = {
+  Dormant: '😴',
+  Emerging: '🌱',
+  Scaling: '📈',
+  Accelerating: '🚀',
+  Exploding: '💥',
+};
+function momentumColor(m?: string): string {
+  if (m === 'Exploding' || m === 'Accelerating') return 'text-green-600';
+  if (m === 'Scaling') return 'text-emerald-600';
+  if (m === 'Emerging') return 'text-yellow-600';
+  return 'text-gray-500';
+}
+function confidenceBadge(c?: string): string {
+  if (c === 'High') return 'bg-green-50 text-green-700';
+  if (c === 'Medium') return 'bg-yellow-50 text-yellow-700';
+  return 'bg-gray-100 text-gray-500';
+}
+
 function scoreLabel(s: number): string {
   if (s >= 85) return 'Excellent';
   if (s >= 70) return 'Strong';
@@ -253,6 +289,34 @@ function Card({ title, action, children }: { title?: string; action?: React.Reac
   );
 }
 
+function ResearchBriefBody({ text }: { text: string }) {
+  return (
+    <div className="space-y-1.5 text-sm text-gray-700 leading-relaxed">
+      {text.split('\n').map((ln, i) => {
+        const t = ln.trim();
+        if (!t) return <div key={i} className="h-1.5" />;
+        if (t.startsWith('## '))
+          return (
+            <h4
+              key={i}
+              className="text-[11px] font-semibold text-gray-900 uppercase tracking-wide pt-3"
+            >
+              {t.slice(3)}
+            </h4>
+          );
+        if (t.startsWith('- '))
+          return (
+            <div key={i} className="flex gap-2 pl-1">
+              <span className="text-gray-400">•</span>
+              <span>{t.slice(2)}</span>
+            </div>
+          );
+        return <p key={i}>{t}</p>;
+      })}
+    </div>
+  );
+}
+
 const NAV = ['Search', 'Dashboard', 'Watchlist', 'Reports', 'Credits'];
 
 export default function Home() {
@@ -293,6 +357,7 @@ export default function Home() {
         domain: data.domain,
         company: data.company,
         trends: data.trends ?? null,
+        timeline: data.timeline ?? null,
         cached: Boolean(data.analysis),
         enriching: Boolean(data.needs_enrichment),
         ...(data.analysis ?? {}),
@@ -325,9 +390,10 @@ export default function Home() {
     }
   }
 
-  async function copyPrompt() {
-    if (!result?.growth_prompt) return;
-    await navigator.clipboard.writeText(result.growth_prompt);
+  async function copyBrief() {
+    const text = result?.research_brief || result?.growth_prompt;
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   }
@@ -341,7 +407,6 @@ export default function Home() {
   const hasAnalysis = result?.growth_score != null;
   const enriching = Boolean(result?.enriching);
   const gScore = result?.growth_score ?? 0;
-  const nScore = result?.northbeam_fit_score ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -449,12 +514,12 @@ export default function Home() {
                     ↗ Visit Website
                   </a>
                   <button
-                    onClick={copyPrompt}
+                    onClick={copyBrief}
                     className={`rounded-lg px-4 py-2 text-sm font-medium ${
                       copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                     }`}
                   >
-                    {copied ? '✓ Copied' : '✦ Outreach Prompt'}
+                    {copied ? '✓ Copied' : '✦ Research Brief'}
                   </button>
                 </div>
               </div>
@@ -483,7 +548,16 @@ export default function Home() {
                   )}
                 </StatCard>
                 <StatCard label="Est. Yearly Revenue">
-                  <div className="text-2xl font-bold text-gray-900">{formatMoney(sales)}</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {result.revenue_range ?? formatMoney(sales)}
+                  </div>
+                  {result.revenue_confidence && (
+                    <span
+                      className={`mt-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${confidenceBadge(result.revenue_confidence)}`}
+                    >
+                      {result.revenue_confidence} confidence
+                    </span>
+                  )}
                 </StatCard>
                 <StatCard label="Active Meta Ads">
                   {hasAnalysis || result.meta_ads ? (
@@ -492,16 +566,13 @@ export default function Home() {
                     <Skeleton className="h-9 w-12" />
                   )}
                 </StatCard>
-                <StatCard label="Northbeam Fit">
-                  {hasAnalysis ? (
-                    <div className="flex items-center gap-2">
-                      <span className={`text-3xl font-bold ${scoreColor(nScore)}`}>{nScore}</span>
-                      <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                        {scoreLabel(nScore)} Fit
-                      </span>
+                <StatCard label="Growth Momentum">
+                  {result.growth_momentum ? (
+                    <div className={`text-xl font-bold ${momentumColor(result.growth_momentum)}`}>
+                      {result.growth_momentum} {MOMENTUM_EMOJI[result.growth_momentum] ?? ''}
                     </div>
                   ) : (
-                    <Skeleton className="h-9 w-16" />
+                    <Skeleton className="h-7 w-28" />
                   )}
                 </StatCard>
               </div>
@@ -532,6 +603,62 @@ export default function Home() {
                 </Card>
               )}
 
+              {/* Growth Timeline */}
+              {result.timeline && result.timeline.length > 0 && (
+                <Card title="Growth Timeline">
+                  {result.timeline.length === 1 ? (
+                    <p className="text-sm text-gray-500">
+                      First snapshot recorded today. Re-analyze later to see what changes over time.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {[...result.timeline].reverse().map((e, i) => (
+                        <div
+                          key={e.date}
+                          className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0"
+                        >
+                          <div className="w-20 text-sm font-medium text-gray-700">
+                            {new Date(e.date).toLocaleDateString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                            <span className="text-gray-700">
+                              Meta <span className="font-semibold">{e.active_meta_ads}</span>
+                              {e.meta_change_pct != null && i < result.timeline!.length - 1 && (
+                                <span
+                                  className={`ml-1 text-xs ${e.meta_change_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                                >
+                                  {e.meta_change_pct >= 0 ? '+' : ''}
+                                  {e.meta_change_pct}%
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-gray-700">
+                              Google <span className="font-semibold">{e.active_google_ads}</span>
+                              {e.google_change_pct != null && i < result.timeline!.length - 1 && (
+                                <span
+                                  className={`ml-1 text-xs ${e.google_change_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                                >
+                                  {e.google_change_pct >= 0 ? '+' : ''}
+                                  {e.google_change_pct}%
+                                </span>
+                              )}
+                            </span>
+                            {e.growth_momentum && (
+                              <span className={`text-xs font-medium ${momentumColor(e.growth_momentum)}`}>
+                                {e.growth_momentum}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
+
               {/* Enriching skeleton (first-time domains, before data arrives) */}
               {enriching && !result.meta_ads && (
                 <Card title="Paid Media Overview">
@@ -557,7 +684,7 @@ export default function Home() {
                       title="✦ Growth Narrative"
                       action={
                         <button
-                          onClick={copyPrompt}
+                          onClick={copyBrief}
                           className="text-xs text-gray-500 hover:text-gray-700 rounded-md border border-gray-200 px-2.5 py-1"
                         >
                           {copied ? '✓ Copied' : '⧉ Copy'}
@@ -576,6 +703,38 @@ export default function Home() {
                         ))}
                       </div>
                     </Card>
+                  )}
+
+                  {/* Research Brief */}
+                  {result.research_brief ? (
+                    <Card
+                      title="✦ Research Brief"
+                      action={
+                        <button
+                          onClick={copyBrief}
+                          className={`text-xs rounded-md px-3 py-1 font-medium ${
+                            copied
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          }`}
+                        >
+                          {copied ? '✓ Copied' : '⧉ Copy Brief'}
+                        </button>
+                      }
+                    >
+                      <ResearchBriefBody text={result.research_brief} />
+                    </Card>
+                  ) : (
+                    enriching && (
+                      <Card title="✦ Research Brief">
+                        <div className="space-y-2">
+                          <Skeleton className="h-3 w-32" />
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-3/4" />
+                        </div>
+                      </Card>
+                    )
                   )}
 
                   {/* Paid Media Overview */}
@@ -834,12 +993,12 @@ export default function Home() {
                       </div>
                     </div>
                     <button
-                      onClick={copyPrompt}
+                      onClick={copyBrief}
                       className={`mt-4 w-full rounded-lg px-4 py-2.5 text-sm font-medium ${
                         copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                       }`}
                     >
-                      {copied ? '✓ Prompt copied to clipboard' : '✦ Generate Outreach Prompt'}
+                      {copied ? '✓ Brief copied' : '✦ Generate Research Brief'}
                     </button>
                   </Card>
                 </div>
