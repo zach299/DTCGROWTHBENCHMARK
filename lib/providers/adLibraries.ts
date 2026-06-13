@@ -133,9 +133,10 @@ export async function fetchGoogleAds(domain: string): Promise<AdPlatformResult> 
       domain,
       domains: [domain],
       url: libraryUrl,
-      region: 'US',
+      region: 'anywhere',
       maxItems: 20,
       maxResults: 20,
+      maxNumberOfAds: 20,
     });
     logger.info('Google ads fetched', { domain, items: list.length });
     const result = mapAds('Google', list, libraryUrl);
