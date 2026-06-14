@@ -901,7 +901,7 @@ function BulkView() {
   const [loading, setLoading] = useState(true);
   const [batchSize, setBatchSize] = useState(50);
   const [running, setRunning] = useState(false);
-  const [prog, setProg] = useState({ total: 0, processed: 0, ok: 0, failed: 0 });
+  const [prog, setProg] = useState({ total: 0, processed: 0, ok: 0, failed: 0, lastError: '' });
 
   const loadStats = async () => {
     try {
@@ -921,11 +921,11 @@ function BulkView() {
     if (running) return;
     setRunning(true);
     const target = batchSize; // total to enrich this session (auto-chained)
-    setProg({ total: target, processed: 0, ok: 0, failed: 0 });
+    setProg({ total: target, processed: 0, ok: 0, failed: 0, lastError: '' });
 
     const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const { job_id } = await jobRes.json();
-    let processed = 0, ok = 0, failed = 0;
+    let processed = 0, ok = 0, failed = 0, lastError = '';
     const CHUNK = 250;
 
     const updateJob = (done = false) =>
@@ -961,12 +961,16 @@ function BulkView() {
               });
               const d = await res.json();
               if (d.ok) ok += 1;
-              else failed += 1;
-            } catch {
+              else {
+                failed += 1;
+                if (d.error) lastError = String(d.error);
+              }
+            } catch (e) {
               failed += 1;
+              lastError = e instanceof Error ? e.message : String(e);
             }
             processed += 1;
-            setProg({ total: target, processed, ok, failed });
+            setProg({ total: target, processed, ok, failed, lastError });
             if (processed % 10 === 0) {
               updateJob();
               loadStats();
@@ -1043,6 +1047,17 @@ function BulkView() {
               {prog.processed}/{prog.total} processed · {prog.ok} ok · {prog.failed} failed
               {running ? ' · keep this tab open' : ' · done'}
             </div>
+            {prog.failed > 0 && prog.lastError && (
+              <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <span className="font-semibold">Last error:</span> {prog.lastError}
+                {/^Apify auth\/quota/i.test(prog.lastError) && (
+                  <span className="block mt-1 text-red-600">
+                    Every domain is failing on Apify — this is almost always exhausted credits or an
+                    invalid token. Check your Apify console billing/usage, then retry.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
         <p className="mt-3 text-[11px] text-gray-400">

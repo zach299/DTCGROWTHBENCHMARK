@@ -85,16 +85,36 @@ async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
     // This actor requires <= 512MB per input URL.
     `?token=${encodeURIComponent(token)}&timeout=120&memory=512`;
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-    signal: AbortSignal.timeout(125_000),
-  });
+  // Retry transient failures (rate limits, 5xx, network blips) with backoff so a
+  // momentary Apify hiccup doesn't fail an entire bulk batch. Auth/quota errors
+  // (401/402/403) are permanent — surface them immediately and clearly.
+  let res: Response | null = null;
+  let lastErr = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(125_000),
+      });
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+      res = null;
+    }
+    if (res?.ok) break;
+    if (res && [401, 402, 403].includes(res.status)) {
+      const body = await res.text().catch(() => '');
+      throw new Error(
+        `Apify auth/quota error (${res.status}) — check your Apify token & credits: ${body.slice(0, 200)}`
+      );
+    }
+    if (res) lastErr = `HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Apify request failed (${res.status}): ${body.slice(0, 300)}`);
+  if (!res || !res.ok) {
+    throw new Error(`Apify request failed after retries: ${lastErr}`);
   }
 
   const items = (await res.json()) as unknown;

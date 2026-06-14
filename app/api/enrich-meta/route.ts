@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
 import { normalizeCategory } from '@/lib/categories';
 import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
+import { analyzeCreativeQuality } from '@/lib/creativeQuality';
 
 // Meta-only enrichment for the bulk dataset. No website crawl, no Google /
 // LinkedIn, no AI. Returns the computed Meta signals; the bulk script persists
@@ -74,7 +75,14 @@ export async function POST(request: Request) {
     const lpCount = meta.unique_landing_pages.length;
     const googleAds = parseNum(parsed.data.google_ads);
     const linkedinAds = parseNum(parsed.data.linkedin_ads);
-    const paidIntensity = activityLevel(count);
+    const channelCount = 1 + (googleAds > 0 ? 1 : 0) + (linkedinAds > 0 ? 1 : 0);
+
+    // Paid Media Quality: inspect the creative sample to separate genuine
+    // campaign creative from catalog/DPA/product-feed volume. Ranking + intensity
+    // use the quality-adjusted ad count, not the raw total.
+    const quality = analyzeCreativeQuality(meta.raw, count, meta.unique_landing_pages, channelCount);
+    const effectiveAds = quality.quality_adjusted_ads;
+    const paidIntensity = activityLevel(effectiveAds);
 
     // Pull seed attributes from master_database (categories / sales / followers)
     // to feed category normalization and the revenue model.
@@ -98,12 +106,13 @@ export async function POST(request: Request) {
     }
 
     const cat = normalizeCategory(categoriesRaw);
+    // Rank on quality-adjusted ads + distinct angles, not raw catalog volume.
     const momentum = computeMomentum({
-      metaAds: count,
+      metaAds: effectiveAds,
       googleAds,
       linkedinAds,
-      landingPages: lpCount,
-      campaignDiversity: themes.length,
+      landingPages: Math.max(lpCount, quality.landing_page_diversity),
+      campaignDiversity: Math.max(themes.length, quality.campaign_angle_count),
       revenue: seedRevenue,
       paidIntensity,
     });
@@ -146,6 +155,15 @@ export async function POST(request: Request) {
       spend_band: spend,
       followers: followers || null,
       source: parsed.data.source ?? 'bulk',
+      // Paid Media Quality model
+      unique_creative_count: quality.unique_creative_count,
+      creative_diversity_score: quality.creative_diversity_score,
+      campaign_angle_count: quality.campaign_angle_count,
+      offer_diversity: quality.offer_diversity,
+      landing_page_diversity: quality.landing_page_diversity,
+      dpa_share: quality.dpa_share,
+      real_creative_score: quality.real_creative_score,
+      quality_adjusted_ads: quality.quality_adjusted_ads,
     };
 
     // Persist so a UI/browser-driven run doesn't need direct DB access.
