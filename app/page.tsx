@@ -648,6 +648,7 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
 interface BulkStats {
   total_domains: number;
   enriched: number;
+  with_ads: number;
   remaining: number;
   success_rate: number | null;
   estimated_cost: number;
@@ -901,7 +902,7 @@ function BulkView() {
   const [loading, setLoading] = useState(true);
   const [batchSize, setBatchSize] = useState(50);
   const [running, setRunning] = useState(false);
-  const [prog, setProg] = useState({ total: 0, processed: 0, ok: 0, failed: 0, lastError: '' });
+  const [prog, setProg] = useState({ total: 0, processed: 0, ok: 0, withAds: 0, failed: 0, lastError: '' });
 
   const loadStats = async () => {
     try {
@@ -921,11 +922,11 @@ function BulkView() {
     if (running) return;
     setRunning(true);
     const target = batchSize; // total to enrich this session (auto-chained)
-    setProg({ total: target, processed: 0, ok: 0, failed: 0, lastError: '' });
+    setProg({ total: target, processed: 0, ok: 0, withAds: 0, failed: 0, lastError: '' });
 
     const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const { job_id } = await jobRes.json();
-    let processed = 0, ok = 0, failed = 0, lastError = '';
+    let processed = 0, ok = 0, withAds = 0, failed = 0, lastError = '';
     const CHUNK = 250;
 
     const updateJob = (done = false) =>
@@ -960,8 +961,10 @@ function BulkView() {
                 body: JSON.stringify(t),
               });
               const d = await res.json();
-              if (d.ok) ok += 1;
-              else {
+              if (d.ok) {
+                ok += 1;
+                if (Number(d.signals?.active_meta_ads ?? 0) > 0) withAds += 1;
+              } else {
                 failed += 1;
                 if (d.error) lastError = String(d.error);
               }
@@ -970,7 +973,7 @@ function BulkView() {
               lastError = e instanceof Error ? e.message : String(e);
             }
             processed += 1;
-            setProg({ total: target, processed, ok, failed, lastError });
+            setProg({ total: target, processed, ok, withAds, failed, lastError });
             if (processed % 10 === 0) {
               updateJob();
               loadStats();
@@ -1044,7 +1047,7 @@ function BulkView() {
               />
             </div>
             <div className="mt-2 text-xs text-gray-600">
-              {prog.processed}/{prog.total} processed · {prog.ok} ok · {prog.failed} failed
+              {prog.processed}/{prog.total} checked · <span className="font-semibold text-green-600">{prog.withAds} with active ads</span> · {prog.ok - prog.withAds} no ads · {prog.failed} failed
               {running ? ' · keep this tab open' : ' · done'}
             </div>
             {prog.failed > 0 && prog.lastError && (
@@ -1072,17 +1075,22 @@ function BulkView() {
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {[
-              ['Total Shopify Domains', fmtNum(s.total_domains)],
-              ['Enriched', fmtNum(s.enriched)],
-              ['Remaining', fmtNum(s.remaining)],
-              ['Success Rate', s.success_rate == null ? '—' : `${s.success_rate}%`],
-              ['Estimated Cost', `$${Number(s.estimated_cost ?? 0).toFixed(2)}`],
-              ['Last Run', s.last_run ? new Date(s.last_run).toLocaleString() : '—'],
-            ].map(([label, val]) => (
+            {([
+              ['Total Shopify Domains', fmtNum(s.total_domains), null],
+              ['Checked', fmtNum(s.enriched), 'domains scanned for ads'],
+              [
+                'With Active Ads',
+                fmtNum(s.with_ads ?? 0),
+                s.enriched ? `${Math.round(((s.with_ads ?? 0) / s.enriched) * 100)}% of checked · the rest run no ads` : null,
+              ],
+              ['Remaining', fmtNum(s.remaining), 'not yet scanned'],
+              ['Estimated Cost', `$${Number(s.estimated_cost ?? 0).toFixed(2)}`, null],
+              ['Last Run', s.last_run ? new Date(s.last_run).toLocaleString() : '—', null],
+            ] as [string, string, string | null][]).map(([label, val, sub], i) => (
               <Card key={label}>
                 <div className="text-xs text-gray-500 mb-1">{label}</div>
-                <div className="text-2xl font-bold text-gray-900">{val}</div>
+                <div className={`text-2xl font-bold ${i === 2 ? 'text-green-600' : 'text-gray-900'}`}>{val}</div>
+                {sub && <div className="text-[11px] text-gray-400 mt-1 leading-tight">{sub}</div>}
               </Card>
             ))}
           </div>
@@ -1090,7 +1098,7 @@ function BulkView() {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold text-gray-900">{fmtNum(s.avg_active_ads)}</div>
-                <div className="text-xs text-gray-500">Avg active Meta ads</div>
+                <div className="text-xs text-gray-500">Avg ads · advertisers only</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-gray-900">{s.avg_landing_pages ?? '—'}</div>
