@@ -106,6 +106,7 @@ interface AnalysisResult {
   trends?: Trends | null;
   cached?: boolean;
   enriching?: boolean;
+  cache_age_days?: number | null;
   company?: Record<string, unknown>;
   spend_band?: string | null;
   primary_category?: string | null;
@@ -1446,26 +1447,40 @@ export default function Home() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h1 className="text-2xl font-bold text-gray-900">{brandName}</h1>
-                      {enriching && (
-                        <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
+                      {enriching ? (
+                        <span className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-600">
                           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                          enriching…
+                          Refreshing in background…
                         </span>
-                      )}
-                      {!enriching && result.cached && (
-                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-                          cached
+                      ) : (
+                        <span className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-500">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          Updated {result.cache_age_days != null ? relativeTime(new Date(Date.now() - result.cache_age_days * 86_400_000).toISOString()) : 'just now'}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <span>{result.domain}</span>
+                      {(result.primary_category || cstr(result.company, 'categories')) && (
+                        <span className="text-gray-400">· {result.primary_category || cstr(result.company, 'categories')}</span>
+                      )}
                       {cstr(result.company, 'platform') && (
                         <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200">
                           {cstr(result.company, 'platform')}
                         </span>
                       )}
                     </div>
+                    {rankInfo?.rank && (
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-white">
+                        <span className="text-sm font-bold">⚡ Growth Rank #{rankInfo.rank.toLocaleString()}</span>
+                        {rankInfo.percentile_top != null && (
+                          <span className="rounded bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold">Top {rankInfo.percentile_top}%</span>
+                        )}
+                        {rankInfo.category_rank != null && rankInfo.primary_category && (
+                          <span className="text-[11px] text-indigo-100">#{rankInfo.category_rank} in {rankInfo.primary_category}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
