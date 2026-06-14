@@ -1348,6 +1348,7 @@ export default function Home() {
         timeline: data.timeline ?? null,
         cached: Boolean(data.analysis),
         enriching: Boolean(data.needs_enrichment),
+        cache_age_days: data.cache_age_days ?? null,
         ...(data.analysis ?? {}),
       };
       setResult(base);
