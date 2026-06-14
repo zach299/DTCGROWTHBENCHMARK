@@ -1436,6 +1436,28 @@ export default function Home() {
 
           {loading && !result && <LoadingChart />}
 
+          {!loading && !result && !error && (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="h-12 w-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-2xl mb-5">⚡</div>
+              <h2 className="text-xl font-bold text-gray-900">Analyze any company</h2>
+              <p className="mt-2 max-w-md text-sm text-gray-500">
+                Type a domain above to see its Growth Rank, momentum, modeled revenue, ad-platform
+                activity and a creative-quality breakdown — in seconds.
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {['ridge.com', 'gymshark.com', 'drinkag1.com'].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => runAnalyze(d)}
+                    className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-indigo-400 hover:text-indigo-600"
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {result && (
             <div className="space-y-6">
               {/* Brand header */}
@@ -1928,7 +1950,7 @@ export default function Home() {
                     <Card title="Recent Ad Creatives">
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {result.meta_ads.sample_creatives.slice(0, 6).map((src, i) => (
-                          <div key={i} className="rounded-lg border border-gray-200 overflow-hidden">
+                          <div key={i} className="creative-tile rounded-lg border border-gray-200 overflow-hidden">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={src}
@@ -1936,7 +1958,10 @@ export default function Home() {
                               referrerPolicy="no-referrer"
                               className="w-full h-32 object-cover bg-gray-100"
                               onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                // Facebook CDN creative URLs expire — drop the whole
+                                // tile so we never show a broken/empty box.
+                                const tile = (e.currentTarget as HTMLImageElement).closest('.creative-tile');
+                                if (tile) (tile as HTMLElement).style.display = 'none';
                               }}
                             />
                             <div className="p-2">
@@ -2042,12 +2067,13 @@ export default function Home() {
                   )}
 
                   {/* Estimated Paid Media Spend */}
-                  {sales > 0 && (
+                  {(result.spend_band || sales > 0) && (
                     <Card title="Est. Paid Media Spend">
-                      <div className="text-2xl font-bold text-gray-900">{estSpend(sales)}</div>
-                      <div className="text-xs text-gray-400">per month</div>
+                      <div className="text-2xl font-bold text-gray-900">
+                        {result.spend_band ?? `${estSpend(sales)}/mo`}
+                      </div>
                       <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                        Modeled from estimated revenue and ad activity. Directional only.
+                        Directional band modeled from active ad volume and paid intensity — not an exact figure.
                       </p>
                     </Card>
                   )}
