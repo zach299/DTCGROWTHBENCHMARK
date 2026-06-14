@@ -603,12 +603,28 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
   const brand = (m: Mover) => m.company_name || m.domain.replace(/^www\./, '').split('.')[0];
   const maxScore = Math.max(1, ...sorted.map((m) => m.growth_score || 0));
 
+  const top1Count = movers.filter((m) => m.percentile_top != null && m.percentile_top <= 1).length;
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Top Movers</h1>
         <p className="text-sm text-gray-500">{subtitle}</p>
       </div>
+      {!loading && total > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            ['Companies Tracked', total.toLocaleString()],
+            ['In Top 1%', top1Count.toLocaleString()],
+            ['Categories', String(categories.length || '—')],
+          ].map(([label, val]) => (
+            <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+              <div className="text-xl font-bold text-gray-900">{val}</div>
+              <div className="text-[11px] text-gray-500">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {MOVER_TABS.map((t) => (
           <button
