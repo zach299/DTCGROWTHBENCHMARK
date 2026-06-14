@@ -41,6 +41,8 @@ function normalize(sig, domain) {
     meta: s.active_meta_ads ?? null,
     google: s.google_ads ?? 0,
     linkedin: s.linkedin_ads ?? 0,
+    real_creative_score: s.real_creative_score ?? null,
+    dpa_share: s.dpa_share ?? null,
     cache_age_days: null,
     rank: null,
     percentile_top: null,
@@ -106,6 +108,7 @@ function render(n) {
       <div class="row chan"><span class="label">Meta Ads</span><span class="value">${n.meta ?? '—'}</span></div>
       <div class="row chan"><span class="label">Google Ads</span><span class="value">${n.google ?? 0}</span></div>
       <div class="row chan"><span class="label">LinkedIn Ads</span><span class="value">${n.linkedin ?? 0}</span></div>
+      ${n.real_creative_score != null ? `<div class="row"><span class="label">Creative Score</span><span class="value">${n.real_creative_score}${n.dpa_share != null && n.dpa_share >= 0.5 ? ' <span style="color:#f87171;font-size:11px">catalog-heavy</span>' : ''}</span></div>` : ''}
       <div class="row"><span class="label">Last Updated</span><span class="value muted">${lastUpdated(n.cache_age_days)}</span></div>
     </div>`;
   el('result').classList.remove('hidden');
