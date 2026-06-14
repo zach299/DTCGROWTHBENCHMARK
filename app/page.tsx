@@ -522,12 +522,15 @@ interface Mover {
   google_ads?: number;
   linkedin_ads?: number;
   creative_velocity?: string | null;
+  growth_score?: number;
   growth_momentum: string | null;
   estimated_revenue_range?: string | null;
   spend_band?: string | null;
   landing_pages_count: number;
   percentile_top: number | null;
   last_enriched_at: string | null;
+  real_creative_score?: number | null;
+  dpa_share?: number | null;
 }
 
 function relativeTime(iso: string | null): string {
@@ -597,6 +600,7 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
     : `${total.toLocaleString()} companies tracked · ranked by Growth Score`;
 
   const brand = (m: Mover) => m.company_name || m.domain.replace(/^www\./, '').split('.')[0];
+  const maxScore = Math.max(1, ...sorted.map((m) => m.growth_score || 0));
 
   return (
     <div className="space-y-5">
@@ -639,46 +643,76 @@ function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
         </Card>
       ) : (
         <Card>
+          {/* Column header for a premium terminal feel */}
+          <div className="hidden md:flex items-center gap-4 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100">
+            <div className="w-10">Rank</div>
+            <div className="flex-1">Company</div>
+            <div className="hidden lg:block w-24 text-center">Creative</div>
+            <div className="hidden md:block w-28 text-right">Momentum</div>
+            <div className="hidden lg:flex gap-3"><div className="w-14 text-right">Meta</div><div className="w-14 text-right">Google</div><div className="w-14 text-right">LinkedIn</div></div>
+            <div className="hidden xl:block w-20 text-right">Updated</div>
+          </div>
           <div className="divide-y divide-gray-100">
-            {sorted.map((m) => (
-              <button
-                key={m.domain}
-                onClick={() => onSelect(m.domain)}
-                className="flex w-full items-center gap-4 py-2.5 text-left hover:bg-gray-50 -mx-2 px-2 rounded-lg"
-              >
-                <div className="w-10 text-sm font-bold text-gray-400">#{m.rank}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-900 truncate capitalize">{brand(m)}</div>
-                  <div className="text-xs text-gray-400 truncate">
-                    {m.domain}
-                    {m.primary_category ? ` · ${m.primary_category}` : ''}
-                    {m.estimated_revenue_range && m.estimated_revenue_range !== 'Unknown' ? ` · ${m.estimated_revenue_range}` : ''}
+            {sorted.map((m) => {
+              const score = m.growth_score || 0;
+              const barPct = Math.max(4, Math.round((score / maxScore) * 100));
+              const rcs = m.real_creative_score;
+              const dpa = m.dpa_share ?? 0;
+              const qTone = rcs == null ? 'bg-gray-300' : rcs >= 55 ? 'bg-green-500' : rcs >= 35 ? 'bg-yellow-400' : 'bg-gray-400';
+              return (
+                <button
+                  key={m.domain}
+                  onClick={() => onSelect(m.domain)}
+                  className="flex w-full items-center gap-4 py-2.5 text-left hover:bg-gray-50 -mx-2 px-2 rounded-lg"
+                >
+                  <div className={`w-10 text-sm font-bold ${m.rank <= 3 ? 'text-indigo-500' : 'text-gray-400'}`}>
+                    {m.rank <= 3 ? ['🥇', '🥈', '🥉'][m.rank - 1] : `#${m.rank}`}
                   </div>
-                </div>
-                {m.percentile_top != null && (
-                  <span className="hidden sm:inline rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                    Top {m.percentile_top}%
-                  </span>
-                )}
-                {m.growth_momentum && (
-                  <span className={`hidden md:inline text-xs font-semibold ${momentumColor(m.growth_momentum)}`}>
-                    {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] || ''}
-                  </span>
-                )}
-                <div className="hidden lg:flex items-center gap-3 text-right">
-                  <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div><div className="text-[10px] text-gray-400">Meta</div></div>
-                  <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.google_ads ?? 0}</div><div className="text-[10px] text-gray-400">Google</div></div>
-                  <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.linkedin_ads ?? 0}</div><div className="text-[10px] text-gray-400">LinkedIn</div></div>
-                </div>
-                <div className="lg:hidden w-20 text-right">
-                  <div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div>
-                  <div className="text-[10px] text-gray-400">Meta ads</div>
-                </div>
-                <div className="hidden xl:block w-20 text-right text-[11px] text-gray-400">
-                  {relativeTime(m.last_enriched_at)}
-                </div>
-              </button>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-900 truncate capitalize">{brand(m)}</span>
+                      {m.percentile_top != null && m.percentile_top <= 5 && (
+                        <span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">Top {m.percentile_top}%</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 truncate">
+                      {m.domain}
+                      {m.primary_category ? ` · ${m.primary_category}` : ''}
+                      {m.estimated_revenue_range && m.estimated_revenue_range !== 'Unknown' ? ` · ${m.estimated_revenue_range}` : ''}
+                    </div>
+                    {/* Growth Score bar */}
+                    <div className="mt-1 h-1 w-full max-w-[220px] rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full bg-indigo-400" style={{ width: `${barPct}%` }} />
+                    </div>
+                  </div>
+                  {/* Creative quality */}
+                  <div className="hidden lg:flex w-24 flex-col items-center" title={`Real Creative Score${rcs != null ? ` ${rcs}` : ''} · DPA ${Math.round(dpa * 100)}%`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${qTone}`} />
+                      <span className="text-sm font-bold text-gray-900">{rcs ?? '—'}</span>
+                    </div>
+                    <div className="text-[10px] text-gray-400">{dpa >= 0.5 ? 'catalog-heavy' : 'real creative'}</div>
+                  </div>
+                  {m.growth_momentum && (
+                    <span className={`hidden md:inline w-28 text-right text-xs font-semibold ${momentumColor(m.growth_momentum)}`}>
+                      {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] || ''}
+                    </span>
+                  )}
+                  <div className="hidden lg:flex items-center gap-3 text-right">
+                    <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div></div>
+                    <div className="w-14"><div className="text-sm font-bold text-gray-500">{m.google_ads ?? 0}</div></div>
+                    <div className="w-14"><div className="text-sm font-bold text-gray-500">{m.linkedin_ads ?? 0}</div></div>
+                  </div>
+                  <div className="lg:hidden w-16 text-right">
+                    <div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div>
+                    <div className="text-[10px] text-gray-400">Meta</div>
+                  </div>
+                  <div className="hidden xl:block w-20 text-right text-[11px] text-gray-400">
+                    {relativeTime(m.last_enriched_at)}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </Card>
       )}

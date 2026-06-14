@@ -23,6 +23,8 @@ interface Mover {
   landing_pages_count: number;
   last_enriched_at: string | null;
   percentile_top: number | null;
+  real_creative_score: number | null;
+  dpa_share: number | null;
 }
 
 function momentumFromAds(ads: number): string {
@@ -35,7 +37,7 @@ export async function GET() {
     const { data, count } = await supabase
       .from('company_meta_signals')
       .select(
-        'domain, company_name, primary_category, subcategory, active_meta_ads, google_ads, linkedin_ads, growth_score, growth_momentum, estimated_revenue_range, spend_band, landing_pages, last_enriched_at',
+        'domain, company_name, primary_category, subcategory, active_meta_ads, google_ads, linkedin_ads, growth_score, growth_momentum, estimated_revenue_range, spend_band, landing_pages, last_enriched_at, real_creative_score, dpa_share',
         { count: 'exact' }
       )
       // Reject pre-fix keyword-contamination (global totals ~14k–50k). Real
@@ -64,6 +66,8 @@ export async function GET() {
         landing_pages_count: Array.isArray(r.landing_pages) ? (r.landing_pages as unknown[]).length : 0,
         last_enriched_at: (r.last_enriched_at as string) ?? null,
         percentile_top: total > 0 ? Math.max(1, Math.ceil(((i + 1) / total) * 100)) : null,
+        real_creative_score: r.real_creative_score != null ? Number(r.real_creative_score) : null,
+        dpa_share: r.dpa_share != null ? Number(r.dpa_share) : null,
       };
     });
 
