@@ -33,16 +33,16 @@ export async function POST(request: Request) {
   const supabase = createServiceClient();
 
   try {
-    // Fetch a buffer, sort numerically (sales column may be text), skip recently
-    // enriched, then take the top N.
+    // Order by the indexed numeric sales column so we truly start with the
+    // biggest-sales Shopify stores (text ordering mis-sorts "9..." above "10...").
     const { data: rows, error } = await supabase
       .from(SOURCE_TABLE)
-      .select('domain, company_name, facebook_url, ' + SALES_COLUMN)
+      .select('domain, company_name, facebook_url, sales_numeric, ' + SALES_COLUMN)
       .ilike('platform', `%${PLATFORM}%`)
-      .order(SALES_COLUMN, { ascending: false })
+      .order('sales_numeric', { ascending: false, nullsFirst: false })
       .limit(limit * 8);
     if (error) {
-      // company_name/facebook_url may not exist in the source — retry minimal.
+      // sales_numeric / company_name / facebook_url may not exist — retry minimal.
       const retry = await supabase
         .from(SOURCE_TABLE)
         .select('domain, ' + SALES_COLUMN)
@@ -59,7 +59,9 @@ export async function POST(request: Request) {
   }
 
   async function build(sb: ReturnType<typeof createServiceClient>, rows: Record<string, unknown>[], n: number) {
-    const sorted = [...rows].sort((a, b) => parseSales(b[SALES_COLUMN]) - parseSales(a[SALES_COLUMN]));
+    const sv = (r: Record<string, unknown>) =>
+      r.sales_numeric != null ? Number(r.sales_numeric) : parseSales(r[SALES_COLUMN]);
+    const sorted = [...rows].sort((a, b) => sv(b) - sv(a));
     const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
     const { data: recent } = await sb
       .from('company_meta_signals')

@@ -121,11 +121,19 @@ async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
   const allItems: Item[] = Array.isArray(items) ? (items as Item[]) : [];
 
   // The actor reports failures as dataset items like { "error": "..." }.
-  // Never count those as ads; if that's all we got, treat the run as failed.
+  // Never count those as ads.
   const errorItems = allItems.filter((i) => typeof i.error === 'string');
   const list = allItems.filter((i) => typeof i.error !== 'string');
   if (list.length === 0 && errorItems.length > 0) {
-    throw new Error(`Apify actor error: ${String(errorItems[0].error).slice(0, 300)}`);
+    const msg = String(errorItems[0].error);
+    // "Ads not found" / "no ads" simply means this query has no matching active
+    // ads — a legitimate 0 result, NOT a failure. Returning empty lets the brand
+    // be recorded with 0 ads and keeps the bulk batch progressing. Anything else
+    // (rate limits, bad input, actor crashes) is a real error worth surfacing.
+    if (/ads?\s+not\s+found|no\s+ads|not\s+found|no\s+result/i.test(msg)) {
+      return [];
+    }
+    throw new Error(`Apify actor error: ${msg.slice(0, 300)}`);
   }
   return list;
 }
