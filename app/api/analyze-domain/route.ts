@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 import { fetchMetaAdsSignals, type MetaAdsSignals } from '@/lib/providers/apifyMetaAds';
+import { analyzeCreativeQuality } from '@/lib/creativeQuality';
 import {
   crawlHomepage,
   inferCampaignThemes,
@@ -276,6 +277,7 @@ type RawResponse = {
   revenue_range?: string | null;
   revenue_confidence?: string | null;
   research_brief?: string | null;
+  paid_media_quality?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -435,6 +437,7 @@ export async function POST(request: Request) {
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
         research_brief: raw.research_brief ?? null,
+        paid_media_quality: raw.paid_media_quality ?? null,
         trends,
         timeline,
         cache_age_days: Math.round(cacheAgeDays * 10) / 10,
@@ -524,6 +527,18 @@ export async function POST(request: Request) {
     const metaOut = metaAdsResponse(meta, analysis.ad_activity_level);
     const campaignThemes = inferCampaignThemes(meta?.unique_landing_pages ?? []);
     const landingPageSignals = { campaign_themes: campaignThemes };
+
+    // Paid Media Quality — separate genuine creative from catalog/DPA volume.
+    const qGoogle = googleSettled.status === 'fulfilled' ? Number(googleSettled.value?.ads_count ?? 0) : 0;
+    const qLinkedin = linkedinSettled.status === 'fulfilled' ? Number(linkedinSettled.value?.ads_count ?? 0) : 0;
+    const paid_media_quality = meta
+      ? analyzeCreativeQuality(
+          meta.raw,
+          meta.active_ads_count,
+          meta.unique_landing_pages,
+          1 + (qGoogle > 0 ? 1 : 0) + (qLinkedin > 0 ? 1 : 0)
+        )
+      : null;
 
     // Unified Ad Platforms view (Meta from the Ad Library, Google + LinkedIn
     // from their transparency libraries). This is the authoritative source for
@@ -675,6 +690,7 @@ export async function POST(request: Request) {
         revenue_range: revenue.range,
         revenue_confidence: revenue.confidence,
         research_brief,
+        paid_media_quality,
       },
     })
       : { error: null };
@@ -728,6 +744,7 @@ export async function POST(request: Request) {
       growth_narrative,
       growth_prompt,
       research_brief,
+      paid_media_quality,
       trends,
       timeline,
       cached: false,

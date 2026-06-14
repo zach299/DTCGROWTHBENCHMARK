@@ -84,13 +84,28 @@ export async function POST(request: Request) {
     {
       const { data: sig } = await supabase
         .from('company_meta_signals')
-        .select('active_meta_ads, google_ads, linkedin_ads, company_name, primary_category, growth_score, growth_momentum, estimated_revenue_range, revenue_confidence, spend_band, ad_activity_level, landing_pages, campaign_themes, sample_ad_copy')
+        .select('active_meta_ads, google_ads, linkedin_ads, company_name, primary_category, growth_score, growth_momentum, estimated_revenue_range, revenue_confidence, spend_band, ad_activity_level, landing_pages, campaign_themes, sample_ad_copy, real_creative_score, quality_adjusted_ads, unique_creative_count, creative_diversity_score, campaign_angle_count, offer_diversity, landing_page_diversity, dpa_share')
         .eq('domain', company.domain)
         .maybeSingle();
       storedSig = sig ?? null;
       const n = Number(sig?.active_meta_ads ?? 0);
       if (n > 0 && n < 13000) storedMeta = n;
     }
+
+    // Paid Media Quality (catalog/DPA vs. real creative) from the stored signal.
+    const paidMediaQuality =
+      storedSig && storedSig.real_creative_score != null
+        ? {
+            real_creative_score: Number(storedSig.real_creative_score ?? 0),
+            quality_adjusted_ads: Number(storedSig.quality_adjusted_ads ?? 0),
+            unique_creative_count: Number(storedSig.unique_creative_count ?? 0),
+            creative_diversity_score: Number(storedSig.creative_diversity_score ?? 0),
+            campaign_angle_count: Number(storedSig.campaign_angle_count ?? 0),
+            offer_diversity: Number(storedSig.offer_diversity ?? 0),
+            landing_page_diversity: Number(storedSig.landing_page_diversity ?? 0),
+            dpa_share: Number(storedSig.dpa_share ?? 0),
+          }
+        : null;
 
     if (cached) {
       cacheAgeDays = (Date.now() - new Date(cached.created_at as string).getTime()) / 86_400_000;
@@ -148,6 +163,7 @@ export async function POST(request: Request) {
         growth_narrative: raw.growth_narrative ?? null,
         growth_prompt: raw.growth_prompt ?? null,
         research_brief: raw.research_brief ?? null,
+        paid_media_quality: paidMediaQuality,
       };
     } else if (storedSig) {
       // No full analysis cached, but we have a bulk-enriched signal — render it
@@ -188,6 +204,7 @@ export async function POST(request: Request) {
         growth_narrative: null,
         growth_prompt: null,
         research_brief: null,
+        paid_media_quality: paidMediaQuality,
         from_stored_signal: true,
       };
       // Always refresh in the background to fill in the rich AI fields.

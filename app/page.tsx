@@ -107,6 +107,20 @@ interface AnalysisResult {
   cached?: boolean;
   enriching?: boolean;
   company?: Record<string, unknown>;
+  spend_band?: string | null;
+  primary_category?: string | null;
+  paid_media_quality?: PaidMediaQuality | null;
+}
+
+interface PaidMediaQuality {
+  real_creative_score: number;
+  quality_adjusted_ads: number;
+  unique_creative_count: number;
+  creative_diversity_score: number;
+  campaign_angle_count: number;
+  offer_diversity: number;
+  landing_page_diversity: number;
+  dpa_share: number;
 }
 
 const TECH_CATEGORY_ORDER = ['Ad Platform', 'Backend', 'Measurement', 'Lifecycle'];
@@ -309,6 +323,23 @@ function StatCard({ label, children }: { label: string; children: React.ReactNod
       {children}
     </div>
   );
+}
+
+function QStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div className="text-xl font-bold text-gray-900">{value}</div>
+      <div className="text-[11px] text-gray-500 leading-tight">{label}</div>
+    </div>
+  );
+}
+
+function creativeLabel(score: number): string {
+  if (score >= 75) return 'Exceptional';
+  if (score >= 55) return 'Strong';
+  if (score >= 35) return 'Moderate';
+  if (score >= 15) return 'Light';
+  return 'Minimal';
 }
 
 function SignalRow({ label, active, detail }: { label: string; active: boolean; detail?: string }) {
@@ -1545,6 +1576,48 @@ export default function Home() {
                   </div>
                 </Card>
               )}
+
+              {/* Paid Media Quality — real creative vs. catalog/DPA volume */}
+              {result.paid_media_quality && result.paid_media_quality.real_creative_score != null && (() => {
+                const q = result.paid_media_quality!;
+                const dpaPct = Math.round((q.dpa_share ?? 0) * 100);
+                const callout =
+                  dpaPct >= 50
+                    ? 'High ad count appears primarily catalog / DPA-driven, so paid media intensity is adjusted downward to reflect real creative output.'
+                    : q.real_creative_score >= 55
+                      ? 'Ad activity appears driven by unique campaign creative rather than product-feed ads — a strong, active testing motion.'
+                      : 'A mix of campaign creative and catalog ads, with moderate creative testing.';
+                const scoreTone = q.real_creative_score >= 55 ? 'text-green-600' : q.real_creative_score >= 35 ? 'text-yellow-600' : 'text-gray-500';
+                return (
+                  <Card title="Paid Media Quality">
+                    <div className="flex flex-wrap items-center gap-6">
+                      <div className="min-w-[140px]">
+                        <div className={`text-4xl font-bold ${scoreTone}`}>{q.real_creative_score}</div>
+                        <div className="text-xs text-gray-500">Real Creative Score · {creativeLabel(q.real_creative_score)}</div>
+                      </div>
+                      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4 min-w-[260px]">
+                        <QStat label="Unique Angles" value={q.campaign_angle_count} />
+                        <QStat label="Unique Creatives" value={q.unique_creative_count} />
+                        <QStat label="Offer Diversity" value={q.offer_diversity} />
+                        <QStat label="LP Diversity" value={q.landing_page_diversity} />
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>DPA / Catalog Share</span>
+                        <span className={`font-semibold ${dpaPct >= 50 ? 'text-red-500' : dpaPct >= 25 ? 'text-yellow-600' : 'text-green-600'}`}>{dpaPct}%</span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className={`h-full ${dpaPct >= 50 ? 'bg-red-400' : dpaPct >= 25 ? 'bg-yellow-400' : 'bg-green-400'}`}
+                          style={{ width: `${Math.max(2, dpaPct)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm text-gray-600 leading-relaxed">{callout}</p>
+                  </Card>
+                );
+              })()}
 
               {/* Growth Trends */}
               {result.trends && (
