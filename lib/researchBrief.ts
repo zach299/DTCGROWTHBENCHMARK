@@ -82,8 +82,32 @@ export function buildResearchBrief(i: ResearchBriefInput, lensId?: string | null
   const lifecycle = i.techStack.filter((t) => t.category === 'Lifecycle').map((t) => t.name);
   const dedicatedMmm = measurement.filter((m) => !['GA4', 'Google Tag Manager'].includes(m));
 
+  // 0. Bottom line — answer "should I care?" in one or two lines.
+  const priority =
+    i.momentum === 'Exploding' || i.momentum === 'Accelerating'
+      ? 'High-priority account'
+      : i.momentum === 'Scaling'
+        ? 'Worth prioritizing'
+        : i.momentum === 'Emerging'
+          ? 'One to watch'
+          : 'Low urgency';
+  const dpaNote =
+    i.quality && i.quality.dpaShare >= 0.5
+      ? ' (ad volume is largely catalog/DPA, so creative output is lighter than the raw count suggests)'
+      : i.quality && i.quality.realCreativeScore >= 55
+        ? ' with a genuine, active creative-testing motion'
+        : '';
+  L.push('## Bottom Line');
+  L.push(
+    `**${priority}.** ${i.brandName} ${MOMENTUM_PROSE[i.momentum]}${dpaNote}. ${
+      activePlatforms.length
+        ? `Active on ${activePlatforms.map((p) => p.split(' ')[0]).join(', ')}.`
+        : 'No active paid campaigns detected.'
+    } Estimated ${i.revenueRange} (${i.revenueConfidence.toLowerCase()} confidence).`
+  );
+
   // 1. Business Overview
-  L.push('## Business Overview');
+  L.push('\n## Business Overview');
   L.push(
     `${i.brandName} (${i.domain}) is a ${i.category ?? 'consumer'} brand${
       i.location ? ` based in ${i.location}` : ''

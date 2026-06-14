@@ -385,6 +385,18 @@ function Card({ title, action, children }: { title?: string; action?: React.Reac
   );
 }
 
+// Render inline **bold** segments within a line.
+function inlineBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) =>
+    p.startsWith('**') && p.endsWith('**') ? (
+      <strong key={i} className="font-semibold text-gray-900">{p.slice(2, -2)}</strong>
+    ) : (
+      <span key={i}>{p}</span>
+    )
+  );
+}
+
 function ResearchBriefBody({ text }: { text: string }) {
   return (
     <div className="space-y-1.5 text-sm text-gray-700 leading-relaxed">
@@ -404,10 +416,10 @@ function ResearchBriefBody({ text }: { text: string }) {
           return (
             <div key={i} className="flex gap-2 pl-1">
               <span className="text-gray-400">•</span>
-              <span>{t.slice(2)}</span>
+              <span>{inlineBold(t.slice(2))}</span>
             </div>
           );
-        return <p key={i}>{t}</p>;
+        return <p key={i}>{inlineBold(t)}</p>;
       })}
     </div>
   );
