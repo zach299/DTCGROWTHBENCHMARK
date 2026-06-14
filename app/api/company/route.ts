@@ -76,14 +76,18 @@ export async function POST(request: Request) {
     let metaRepaired = false;
 
     // The bulk Meta signal is more reliable than a single live scrape (which can
-    // intermittently return 0). Use it to repair a cached/zero Meta count.
+    // intermittently return 0). Use it to repair a cached/zero Meta count, and —
+    // when there's no full analysis cached yet — to render real data instantly
+    // instead of skeletons (the full enrichment then fills in the rich fields).
     let storedMeta = 0;
+    let storedSig: Record<string, unknown> | null = null;
     {
       const { data: sig } = await supabase
         .from('company_meta_signals')
-        .select('active_meta_ads')
+        .select('active_meta_ads, google_ads, linkedin_ads, company_name, primary_category, growth_score, growth_momentum, estimated_revenue_range, revenue_confidence, spend_band, ad_activity_level, landing_pages, campaign_themes, sample_ad_copy')
         .eq('domain', company.domain)
         .maybeSingle();
+      storedSig = sig ?? null;
       const n = Number(sig?.active_meta_ads ?? 0);
       if (n > 0 && n < 13000) storedMeta = n;
     }
@@ -145,6 +149,49 @@ export async function POST(request: Request) {
         growth_prompt: raw.growth_prompt ?? null,
         research_brief: raw.research_brief ?? null,
       };
+    } else if (storedSig) {
+      // No full analysis cached, but we have a bulk-enriched signal — render it
+      // immediately (no skeletons). The client still triggers a background full
+      // enrichment to fill in narrative, ad platforms and research brief.
+      const lps = Array.isArray(storedSig.landing_pages) ? (storedSig.landing_pages as unknown[]) : [];
+      const themes = Array.isArray(storedSig.campaign_themes) ? (storedSig.campaign_themes as string[]) : [];
+      const metaCount = storedMeta || Number(storedSig.active_meta_ads ?? 0);
+      analysis = {
+        growth_score: storedSig.growth_score ?? null,
+        growth_momentum: storedSig.growth_momentum ?? null,
+        paid_media_signal: storedSig.ad_activity_level ?? null,
+        revenue_range: storedSig.estimated_revenue_range ?? null,
+        revenue_confidence: storedSig.revenue_confidence ?? null,
+        spend_band: storedSig.spend_band ?? null,
+        primary_category: storedSig.primary_category ?? null,
+        recommended_buyer: null,
+        recommended_angle: null,
+        outbound_hook: null,
+        reasons: null,
+        meta_ads: {
+          advertiser_name: storedSig.company_name ?? null,
+          active_ads_count: metaCount,
+          unique_landing_pages: lps,
+          sample_ad_copy: Array.isArray(storedSig.sample_ad_copy) ? storedSig.sample_ad_copy : [],
+          sample_creatives: [],
+        },
+        ad_platforms: [
+          { platform: 'Meta', status: metaCount > 0 ? 'active' : 'none', ads_count: metaCount },
+          { platform: 'Google', status: Number(storedSig.google_ads ?? 0) > 0 ? 'active' : 'none', ads_count: Number(storedSig.google_ads ?? 0) },
+          { platform: 'LinkedIn', status: Number(storedSig.linkedin_ads ?? 0) > 0 ? 'active' : 'none', ads_count: Number(storedSig.linkedin_ads ?? 0) },
+        ],
+        landing_page_signals: { campaign_themes: themes },
+        brand_context: null,
+        website_signals: null,
+        tech_stack: null,
+        server_side_signals: null,
+        growth_narrative: null,
+        growth_prompt: null,
+        research_brief: null,
+        from_stored_signal: true,
+      };
+      // Always refresh in the background to fill in the rich AI fields.
+      metaRepaired = true;
     }
 
     // Trends from the immutable snapshot history (cheap read).
