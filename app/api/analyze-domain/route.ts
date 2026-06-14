@@ -622,6 +622,16 @@ export async function POST(request: Request) {
       techStack,
       serverSide: crawlResult?.server_side_signals ?? [],
       websiteSignals: crawlResult?.website_signals ?? null,
+      quality: paid_media_quality
+        ? {
+            realCreativeScore: paid_media_quality.real_creative_score,
+            dpaShare: paid_media_quality.dpa_share,
+            uniqueCreatives: paid_media_quality.unique_creative_count,
+            campaignAngles: paid_media_quality.campaign_angle_count,
+            offerDiversity: paid_media_quality.offer_diversity,
+            landingPageDiversity: paid_media_quality.landing_page_diversity,
+          }
+        : null,
     }, parsed.data.lens);
 
     // Generate narrative — uses Claude when ANTHROPIC_API_KEY is set,

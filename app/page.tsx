@@ -261,6 +261,16 @@ function briefInputFrom(result: AnalysisResult): ResearchBriefInput | null {
     techStack: result.tech_stack ?? [],
     serverSide: result.server_side_signals ?? [],
     websiteSignals: result.website_signals ?? null,
+    quality: result.paid_media_quality
+      ? {
+          realCreativeScore: result.paid_media_quality.real_creative_score,
+          dpaShare: result.paid_media_quality.dpa_share,
+          uniqueCreatives: result.paid_media_quality.unique_creative_count,
+          campaignAngles: result.paid_media_quality.campaign_angle_count,
+          offerDiversity: result.paid_media_quality.offer_diversity,
+          landingPageDiversity: result.paid_media_quality.landing_page_diversity,
+        }
+      : null,
   };
 }
 

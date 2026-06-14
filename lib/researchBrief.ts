@@ -27,6 +27,14 @@ export interface ResearchBriefInput {
     careers_active: boolean;
     careers_roles: string[];
   } | null;
+  quality?: {
+    realCreativeScore: number;
+    dpaShare: number; // 0-1
+    uniqueCreatives: number;
+    campaignAngles: number;
+    offerDiversity: number;
+    landingPageDiversity: number;
+  } | null;
 }
 
 function productHints(landingPages: string[], copy: string[]): string[] {
@@ -104,22 +112,40 @@ export function buildResearchBrief(i: ResearchBriefInput, lensId?: string | null
     L.push(i.campaignThemes.map((t) => `- ${t}`).join('\n'));
   }
 
-  // 4. Paid media observations
+  // 4. Paid media observations — lead with creative QUALITY, not raw count.
   L.push('\n## Paid Media Observations');
   if (activePlatforms.length) {
-    L.push(
-      `Currently advertising on ${activePlatforms.join(', ')} — a ${
-        activePlatforms.length >= 2 ? 'multi-channel' : 'single-channel'
-      } paid mix at ${i.paidIntensity} intensity.${
-        i.metaAds >= 100
-          ? ' The high Meta creative volume points to a mature, in-house or agency-run performance team actively testing into scale.'
-          : i.metaAds >= 10
-            ? ' Meta volume suggests a structured but still-scaling paid program.'
-            : ''
-      }`
-    );
+    const q = i.quality;
+    const channelLine = `Running ${activePlatforms.join(', ')} — a ${
+      activePlatforms.length >= 2 ? 'multi-channel' : 'single-channel'
+    } paid mix.`;
+    L.push(channelLine);
+
+    if (q) {
+      const dpaPct = Math.round((q.dpaShare ?? 0) * 100);
+      if (dpaPct >= 50) {
+        L.push(
+          `Of ${i.metaAds} active Meta ads, an estimated ${dpaPct}% read as catalog / DPA product-feed ads — so the raw count overstates true creative output. Paid media intensity is adjusted downward to reflect ~${q.uniqueCreatives} genuinely distinct creatives across ${q.campaignAngles} campaign angle${q.campaignAngles === 1 ? '' : 's'}.`
+        );
+      } else if (q.realCreativeScore >= 55) {
+        L.push(
+          `Ad activity is driven by unique campaign creative, not product-feed ads (only ~${dpaPct}% catalog) — ${q.uniqueCreatives} distinct creatives across ${q.campaignAngles} angles and ${q.offerDiversity} offer type${q.offerDiversity === 1 ? '' : 's'}. This is a real, active testing motion, not passive retargeting.`
+        );
+      } else {
+        L.push(
+          `Creative output is moderate: ~${q.uniqueCreatives} distinct creatives across ${q.campaignAngles} angle${q.campaignAngles === 1 ? '' : 's'}, with ${dpaPct}% catalog/DPA share. Some testing, but not yet at-scale creative velocity.`
+        );
+      }
+      if (q.landingPageDiversity >= 5) {
+        L.push(
+          `They route traffic to ${q.landingPageDiversity}+ distinct landing destinations — a sign of offer- and audience-level testing rather than a single hero funnel.`
+        );
+      }
+    } else if (i.metaAds >= 100) {
+      L.push('High Meta creative volume points to a mature, actively-managed performance program.');
+    }
   } else {
-    L.push('No active paid campaigns were detected across Meta, Google, or LinkedIn libraries.');
+    L.push('No active paid campaigns detected across Meta, Google, or LinkedIn — acquisition likely leans on organic, retail, or other channels.');
   }
 
   // 5. Growth observations
