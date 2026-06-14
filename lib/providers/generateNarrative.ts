@@ -264,7 +264,7 @@ export async function generateNarrative(input: NarrativeInput): Promise<Narrativ
   if (apiKey) {
     try {
       const client = new Anthropic({ apiKey });
-      const systemPrompt = `You are a GTM intelligence analyst helping B2B sales teams at Northbeam prepare account research for DTC e-commerce brands. Be concise, specific, and intelligence-led. Avoid generic filler. Focus on what the signals actually reveal about the company's growth trajectory and pain points.`;
+      const systemPrompt = `You are a GTM intelligence analyst helping a growth/sales team prepare account research on DTC e-commerce brands. Be concise, specific, and intelligence-led. Avoid generic filler. Focus on what the signals actually reveal about the company's growth trajectory and pain points.`;
       const userPrompt = `Here is the intelligence gathered on ${input.domain}:
 
 ${contextBlock}
@@ -296,7 +296,7 @@ Respond with ONLY the narrative paragraph — no headers, no bullet points, no e
     growth_narrative = templateNarrative(input);
   }
 
-  const growth_prompt = `You are a GTM intelligence assistant helping a sales team at Northbeam prepare for outreach to ${input.domain}.
+  const growth_prompt = `You are a GTM intelligence assistant helping a growth/sales team prepare for outreach to ${input.domain}.
 
 ## Company Intelligence
 

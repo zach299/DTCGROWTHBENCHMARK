@@ -47,8 +47,10 @@ function normalize(domain, company, a, timeline) {
     linkedin: adCount(a.ad_platforms, 'LinkedIn'),
     themes: a.landing_page_signals?.campaign_themes ?? [],
     research_brief: a.research_brief ?? null,
-    category: company?.categories ?? null,
+    category: a.primary_category ?? company?.categories ?? null,
     location: company?.company_location ?? null,
+    spend_band: a.spend_band ?? null,
+    quality: a.paid_media_quality ?? null,
     timeline: timeline ?? [],
   };
 }
@@ -79,6 +81,13 @@ function formatCompany(n) {
     'Ad Activity:',
     ...(platforms.length ? platforms : ['- No active paid campaigns detected']),
   ];
+  if (n.quality && n.quality.real_creative_score != null) {
+    const dpaPct = Math.round((n.quality.dpa_share ?? 0) * 100);
+    signals.push(
+      `Real Creative Score ${n.quality.real_creative_score}/100 (${n.quality.unique_creative_count} unique creatives, ${n.quality.campaign_angle_count} angles, ${dpaPct}% catalog/DPA)`
+    );
+  }
+  if (n.spend_band) signals.push(`Est. paid spend: ${n.spend_band}`);
   if (signals.length) {
     lines.push('', 'Recent Signals:', ...signals.map((s) => `- ${s}`));
   }

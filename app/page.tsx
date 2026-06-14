@@ -1392,7 +1392,7 @@ export default function Home() {
           ))}
         </nav>
         <div className="mt-auto pt-6 text-xs text-gray-500">
-          Northbeam GTM Intelligence
+          Growth Intelligence
         </div>
       </aside>
 
