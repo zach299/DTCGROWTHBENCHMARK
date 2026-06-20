@@ -182,10 +182,10 @@ function scoreColor(s: number): string {
   return 'text-red-600';
 }
 function intensityLabel(signal: string): string {
-  if (signal === 'high') return 'Very High';
-  if (signal === 'medium') return 'High';
-  if (signal === 'low') return 'Moderate';
-  return 'Low';
+  if (signal === 'high') return 'High';
+  if (signal === 'medium') return 'Medium';
+  if (signal === 'low') return 'Low';
+  return 'None';
 }
 function velocity(count: number): string {
   if (count >= 100) return 'High';
@@ -245,11 +245,11 @@ function briefInputFrom(result: AnalysisResult): ResearchBriefInput | null {
   return {
     brandName: brand,
     domain: result.domain,
-    category: cstr(result.company, 'categories'),
+    category: result.primary_category ?? cstr(result.company, 'categories'),
     location: cstr(result.company, 'company_location'),
     revenueRange: result.revenue_range ?? 'Unknown',
     revenueConfidence: result.revenue_confidence ?? 'Low',
-    momentum: (result.growth_momentum ?? 'Scaling') as Momentum,
+    momentum: (result.growth_momentum ?? 'Emerging') as Momentum,
     paidIntensity: result.paid_media_signal ?? 'low',
     metaAds: result.meta_ads?.active_ads_count ?? 0,
     googleAds: adCount(result, 'Google'),
@@ -1626,7 +1626,14 @@ export default function Home() {
                 </StatCard>
                 <StatCard label="Active Meta Ads">
                   {hasAnalysis || result.meta_ads ? (
-                    <div className="text-3xl font-bold text-gray-900">{metaCount}</div>
+                    <div>
+                      <div className="text-3xl font-bold text-gray-900">{metaCount}</div>
+                      {result.paid_media_quality && result.paid_media_quality.quality_adjusted_ads < metaCount * 0.7 && (
+                        <div className="text-[10px] text-gray-400 mt-0.5">
+                          ~{result.paid_media_quality.quality_adjusted_ads} effective
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <Skeleton className="h-9 w-12" />
                   )}
@@ -1914,21 +1921,34 @@ export default function Home() {
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Landing Pages</div>
                           <div className="text-2xl font-bold text-gray-900">
-                            {result.meta_ads.unique_landing_pages.length}
+                            {result.meta_ads.unique_landing_pages.length || result.paid_media_quality?.landing_page_diversity || 0}
                           </div>
                         </div>
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Creative Velocity</div>
-                          <div className="text-lg font-semibold text-gray-900">{velocity(metaCount)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Campaign Diversity</div>
-                          <div className="text-lg font-semibold text-gray-900">
-                            {diversity(
-                              Math.max(themes.length, result.meta_ads?.unique_landing_pages.length ?? 0)
-                            )}
-                          </div>
-                        </div>
+                        {result.paid_media_quality ? (
+                          <>
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Unique Creatives</div>
+                              <div className="text-2xl font-bold text-gray-900">{result.paid_media_quality.unique_creative_count}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Campaign Angles</div>
+                              <div className="text-2xl font-bold text-gray-900">{result.paid_media_quality.campaign_angle_count}</div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Creative Velocity</div>
+                              <div className="text-lg font-semibold text-gray-900">{velocity(metaCount)}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Campaign Diversity</div>
+                              <div className="text-lg font-semibold text-gray-900">
+                                {diversity(Math.max(themes.length, result.meta_ads?.unique_landing_pages.length ?? 0))}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {/* Themes + landing pages */}
@@ -2001,6 +2021,19 @@ export default function Home() {
                                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Active
                               </div>
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Sample Ad Copy (text) — shown when no creative images available */}
+                  {result.meta_ads && result.meta_ads.sample_creatives.length === 0 && result.meta_ads.sample_ad_copy.length > 0 && (
+                    <Card title="Sample Ad Copy">
+                      <div className="space-y-2">
+                        {result.meta_ads.sample_ad_copy.slice(0, 5).map((copy, i) => (
+                          <div key={i} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 leading-snug">
+                            &ldquo;{truncate(copy, 160)}&rdquo;
                           </div>
                         ))}
                       </div>
@@ -2153,32 +2186,42 @@ export default function Home() {
                   )}
 
                   {/* Recommendations */}
+                  {(lensAngle || result.recommended_buyer || result.outbound_hook) && (
                   <Card title="Recommendations">
                     <div className="space-y-3 text-sm">
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">Ideal Buyer</div>
-                        <div className="text-gray-900 font-medium">{result.recommended_buyer}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">Best Angle</div>
-                        <div className="text-gray-900 font-medium">
-                          {lensAngle ?? result.recommended_angle}
+                      {result.recommended_buyer && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5">Ideal Buyer</div>
+                          <div className="text-gray-900 font-medium">{result.recommended_buyer}</div>
                         </div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">Outbound Hook</div>
-                        <div className="text-gray-700">{lensHook ?? result.outbound_hook}</div>
-                      </div>
+                      )}
+                      {(lensAngle ?? result.recommended_angle) && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5">Best Angle</div>
+                          <div className="text-gray-900 font-medium">
+                            {lensAngle ?? result.recommended_angle}
+                          </div>
+                        </div>
+                      )}
+                      {(lensHook ?? result.outbound_hook) && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5">Outbound Hook</div>
+                          <div className="text-gray-700">{lensHook ?? result.outbound_hook}</div>
+                        </div>
+                      )}
                     </div>
-                    <button
-                      onClick={copyBrief}
-                      className={`mt-4 w-full rounded-lg px-4 py-2.5 text-sm font-medium ${
-                        copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                      }`}
-                    >
-                      {copied ? '✓ Brief copied' : '✦ Generate Research Brief'}
-                    </button>
+                    {displayedBrief && (
+                      <button
+                        onClick={copyBrief}
+                        className={`mt-4 w-full rounded-lg px-4 py-2.5 text-sm font-medium ${
+                          copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        }`}
+                      >
+                        {copied ? '✓ Brief copied' : '✦ Copy Research Brief'}
+                      </button>
+                    )}
                   </Card>
+                  )}
                 </div>
               </div>
 

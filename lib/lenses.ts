@@ -51,8 +51,14 @@ const measurement: Lens = {
       ? `They already run ${mmm.join(' and ')}, so lead with displacement/consolidation: accuracy, incrementality, and a single source of truth across ${platforms(i).join(', ') || 'their channels'} — not "do you measure?"`
       : `They spend meaningfully on paid (${platforms(i).join(', ') || 'paid channels'}) but show no dedicated attribution platform — the wedge is helping them see which campaigns are truly incremental before inefficiency compounds.`;
   },
-  hook: (i) =>
-    `${i.brandName} is running ${i.metaAds} active Meta ads across ${i.landingPages.length} landing pages — at this volume it's hard to see which campaigns are truly incremental.`,
+  hook: (i) => {
+    const p = platforms(i);
+    if (i.metaAds >= 10)
+      return `${i.brandName} is running ${i.metaAds} active Meta ads across ${i.landingPages.length} landing pages — at this volume it's hard to see which campaigns are truly incremental.`;
+    if (p.length)
+      return `${i.brandName} is active on ${p.join(' and ')} — multi-channel spend without unified attribution makes it difficult to measure true incrementality.`;
+    return `${i.brandName} is in an ${i.momentum} growth phase — paid media and attribution will be key levers as they scale.`;
+  },
 };
 
 const emailSms: Lens = {
@@ -75,8 +81,13 @@ const emailSms: Lens = {
       ? `They run ${lc.join(' and ')} — the wedge is squeezing more from owned channels (segmentation, deliverability, flows) to lift LTV and reduce paid dependence.`
       : `They acquire hard on paid (${platforms(i).join(', ') || 'paid'}) but show no lifecycle platform — the wedge is capturing owned-channel revenue (email/SMS) to lower effective CAC.`;
   },
-  hook: (i) =>
-    `${i.brandName} is acquiring aggressively (${i.metaAds} Meta ads) — the question is how much of that traffic converts into repeat, owned-channel revenue.`,
+  hook: (i) => {
+    const p = platforms(i);
+    const totalAds = i.metaAds + i.googleAds + i.linkedinAds;
+    if (totalAds >= 10)
+      return `${i.brandName} is acquiring hard on ${p.join(' and ') || 'paid channels'} — the question is how much of that traffic converts into repeat, owned-channel revenue.`;
+    return `${i.brandName} is in a ${i.momentum} phase — early investment in lifecycle will compound as they scale paid acquisition.`;
+  },
 };
 
 const cro: Lens = {
@@ -93,8 +104,11 @@ const cro: Lens = {
   },
   angle: (i) =>
     `They push ${i.metaAds} ads into ${i.landingPages.length} dedicated landing pages — the wedge is lifting conversion rate and page-test velocity so the same spend yields more revenue.`,
-  hook: (i) =>
-    `${i.brandName} is driving ${i.metaAds} ads into ${i.landingPages.length} landing pages — small CVR gains at this volume compound fast.`,
+  hook: (i) => {
+    if (i.metaAds >= 10)
+      return `${i.brandName} is driving ${i.metaAds} ads into ${i.landingPages.length} landing pages — small CVR gains at this volume compound fast.`;
+    return `${i.brandName} is in an ${i.momentum} phase — landing page conversion rate will determine how efficiently paid spend scales.`;
+  },
 };
 
 const paidMedia: Lens = {
@@ -111,8 +125,14 @@ const paidMedia: Lens = {
   },
   angle: (i) =>
     `They're testing at scale (${i.metaAds} Meta ads${i.googleAds ? `, ${i.googleAds} Google` : ''}) — the wedge is creative production/iteration velocity and channel diversification to keep CAC down.`,
-  hook: (i) =>
-    `${i.brandName} is running ${i.metaAds} active Meta ads — at that volume creative fatigue and CPMs are the constraint, not budget.`,
+  hook: (i) => {
+    const p = platforms(i);
+    if (i.metaAds >= 10)
+      return `${i.brandName} is running ${i.metaAds} active Meta ads — at that volume creative fatigue and CPMs are the constraint, not budget.`;
+    if (p.length)
+      return `${i.brandName} is active on ${p.join(' and ')} — creative strategy and channel mix will define their cost efficiency as they scale.`;
+    return `${i.brandName} is in a ${i.momentum} phase — building a scalable creative and media strategy now prevents efficiency drag later.`;
+  },
 };
 
 const neutral: Lens = {
@@ -128,8 +148,14 @@ const neutral: Lens = {
   },
   angle: (i) =>
     `${i.brandName} is in a ${i.momentum} phase with strong paid investment across ${platforms(i).join(', ') || 'paid channels'}. The clearest leverage points are channel diversification, conversion efficiency, and retention.`,
-  hook: (i) =>
-    `${i.brandName} is running ${i.metaAds} active Meta ads across ${i.landingPages.length} landing pages.`,
+  hook: (i) => {
+    const p = platforms(i);
+    if (i.metaAds >= 10)
+      return `${i.brandName} is running ${i.metaAds} active Meta ads across ${i.landingPages.length} landing pages.`;
+    if (p.length)
+      return `${i.brandName} is active on ${p.join(' and ')} and in a ${i.momentum} growth phase.`;
+    return `${i.brandName} is in a ${i.momentum} phase — building toward a repeatable acquisition engine.`;
+  },
 };
 
 export const LENSES: Lens[] = [measurement, emailSms, cro, paidMedia, neutral];

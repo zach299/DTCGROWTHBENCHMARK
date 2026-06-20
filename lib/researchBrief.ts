@@ -126,8 +126,14 @@ export function buildResearchBrief(i: ResearchBriefInput, lensId?: string | null
           : 'Their funnel is relatively concentrated around a few key pages.'
       }`
     );
+  } else if (i.landingPages.length >= 5) {
+    L.push(
+      `Specific product focus is unclear from creative signals, but they run ${i.landingPages.length}+ dedicated landing pages — suggesting active offer- and audience-level testing.`
+    );
+  } else if (i.metaAds > 0 || i.googleAds > 0) {
+    L.push(`Specific product focus is not identifiable from current signals, but active paid campaigns indicate ongoing acquisition investment.`);
   } else {
-    L.push('Specific product focus is unclear from current creative, but paid activity is present.');
+    L.push('No active paid campaigns detected — product push strategy not determinable from current signals.');
   }
 
   // 3. Campaign themes
