@@ -212,13 +212,34 @@ function estSpend(salesYear: number): string {
 }
 function narrativeTags(r: AnalysisResult): string[] {
   const tags: string[] = [];
-  const cat = (cstr(r.company, 'categories') ?? '').toLowerCase();
-  tags.push(cat.includes('business') ? 'B2B' : 'DTC Brand');
-  if ((r.growth_score ?? 0) >= 70) tags.push('Scaling Stage');
+  const mom = r.growth_momentum;
+  const score = r.growth_score ?? 0;
   const ads = r.meta_ads?.active_ads_count ?? 0;
-  if (ads >= 100) tags.push('High Ad Volume');
-  const themes = r.landing_page_signals?.campaign_themes.length ?? 0;
-  if (themes >= 4) tags.push('Product Expansion');
+  const q = r.paid_media_quality;
+
+  // Momentum tag
+  if (mom === 'Exploding' || mom === 'Accelerating') tags.push('High Growth');
+  else if (mom === 'Scaling') tags.push('Scaling');
+  else if (mom === 'Emerging') tags.push('Emerging');
+
+  // Ad quality signal
+  if (q) {
+    if (q.real_creative_score >= 65) tags.push('Strong Creative');
+    else if (q.dpa_share >= 0.5) tags.push('Catalog-Heavy');
+  } else if (ads >= 100) {
+    tags.push('High Ad Volume');
+  }
+
+  // Multi-channel
+  const google = (r.ad_platforms ?? []).find((p) => p.platform === 'Google' && p.status === 'active');
+  const linkedin = (r.ad_platforms ?? []).find((p) => p.platform === 'LinkedIn' && p.status === 'active');
+  if (google && linkedin) tags.push('Full-Channel');
+  else if (google || linkedin) tags.push('Multi-Channel');
+
+  // Revenue / score tier
+  if (score >= 80) tags.push('Top Tier');
+  else if (score >= 50 && !tags.includes('High Growth') && !tags.includes('Scaling')) tags.push('Mid-Market');
+
   return tags.slice(0, 4);
 }
 function paidStatusBadge(status: string): string {
