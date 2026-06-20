@@ -215,23 +215,31 @@ function computeScores(company: MasterRow, meta: MetaAdsSignals | null) {
   const paid_media_signal = activity === 'unknown' || activity === 'none' ? 'low' : activity;
 
   const recommended_buyer =
-    growth_score < 40 ? 'Founder / CEO' : 'VP Growth / Head of Performance Marketing';
+    growth_score >= 70
+      ? 'VP Growth / Head of Performance Marketing'
+      : growth_score >= 40
+        ? 'Director of Marketing / Growth Lead'
+        : 'Founder / Head of Marketing';
 
   const category = company.categories?.split(/[,;|/]/)[0]?.trim() || 'DTC';
   const recommended_angle =
-    activity === 'high' || activity === 'medium'
-      ? 'Measurement + incrementality across scaling paid channels'
-      : `Help their ${category} brand scale paid acquisition with better attribution and incrementality measurement.`;
+    adsCount >= 50
+      ? `Incrementality and measurement — at ${adsCount} live creatives, they need to know which campaigns are truly driving revenue, not just optimizing for modeled conversions.`
+      : activity === 'high' || activity === 'medium'
+        ? 'Measurement + incrementality to protect ROAS as they scale paid channels'
+        : `Help their ${category} brand build a measurable acquisition engine — right now attribution is likely guesswork at their stage.`;
 
   let outbound_hook: string;
-  if (meta && adsCount > 0) {
-    outbound_hook = `Noticed ${meta.advertiser_name ?? company.domain} is running ${adsCount} active Meta ads across ${landingPagesCount} landing pages — brands testing at this volume are often struggling to see which campaigns are truly incremental.`;
+  if (meta && adsCount >= 10) {
+    outbound_hook = `Noticed ${meta.advertiser_name ?? company.domain} is running ${adsCount} active Meta ads across ${landingPagesCount} landing pages — at that volume, knowing which campaigns are truly incremental is the difference between scaling efficiently and burning budget.`;
+  } else if (meta && adsCount > 0) {
+    outbound_hook = `${meta.advertiser_name ?? company.domain} has ${adsCount} active Meta ads — an early signal they're investing in paid acquisition. The question is whether they have the measurement infrastructure to scale it efficiently.`;
   } else {
     const followerHook =
       followers > 0
         ? `With ${followers.toLocaleString()} combined social followers`
-        : `As a ${company.platform || 'DTC'} brand`;
-    outbound_hook = `${followerHook}, ${company.domain} is well positioned to scale paid media — but most brands at this stage are flying blind on attribution.`;
+        : `As a growing ${company.platform || 'DTC'} brand`;
+    outbound_hook = `${followerHook}, ${company.domain} is building toward a paid acquisition program — getting measurement right before scaling is what separates brands that grow efficiently from those that overspend to learn.`;
   }
 
   return {
