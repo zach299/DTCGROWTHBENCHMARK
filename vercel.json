@@ -4,5 +4,6 @@
       "path": "/api/worker/enrich",
       "schedule": "* * * * *"
     }
-  ]
+  ],
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }
