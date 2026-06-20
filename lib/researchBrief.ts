@@ -208,10 +208,23 @@ export function buildResearchBrief(i: ResearchBriefInput, lensId?: string | null
   const priorities: string[] = [];
   if (i.metaAds >= 50 || i.googleAds >= 25)
     priorities.push('scaling paid spend efficiently while protecting ROAS/MER');
+  if (i.quality && i.quality.dpaShare >= 0.5 && i.metaAds >= 30)
+    priorities.push('building real creative diversity to reduce reliance on catalog/DPA ads');
   if (i.landingPages.length >= 5) priorities.push('conversion-rate optimization across many landing pages');
-  if (lifecycle.length) priorities.push('lifecycle / retention to improve LTV');
-  if (i.websiteSignals?.international) priorities.push('international growth');
-  if (activePlatforms.length === 1) priorities.push('diversifying beyond a single paid channel');
+  if (i.websiteSignals?.subscription && !lifecycle.length)
+    priorities.push('lifecycle / CRM to capture subscription retention and reduce churn');
+  else if (lifecycle.length) priorities.push('deepening lifecycle / retention to improve LTV');
+  if (i.websiteSignals?.international) priorities.push('international expansion');
+  if (activePlatforms.length === 1 && (i.metaAds >= 30 || i.googleAds >= 15))
+    priorities.push('channel diversification to reduce single-platform dependency');
+  if (i.websiteSignals?.careers_active) {
+    const growthRoles = (i.websiteSignals.careers_roles ?? []).filter((r) =>
+      /growth|performance|paid|acquisition|brand/i.test(r)
+    );
+    if (growthRoles.length)
+      priorities.push(`scaling the team — actively hiring ${growthRoles.slice(0, 2).join(', ')}`);
+    else priorities.push('scaling the team (active hiring)');
+  }
   L.push(
     (priorities.length ? priorities : ['establishing a repeatable, measurable acquisition engine'])
       .map((p) => `- ${p}`)
