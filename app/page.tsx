@@ -440,7 +440,12 @@ interface WatchlistItem {
   domain: string;
   brand_name: string | null;
   list_name: string;
-  latest?: { growth_momentum?: string | null; growth_score?: number | null } | null;
+  latest?: {
+    growth_momentum?: string | null;
+    growth_score?: number | null;
+    active_meta_ads?: number | null;
+    revenue_range?: string | null;
+  } | null;
 }
 
 function movementArrow(momentum?: string | null): { arrow: string; color: string } {
@@ -493,28 +498,47 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
             return (
               <Card key={list} title={`${list} (${inList.length})`}>
                 {inList.length === 0 ? (
-                  <p className="text-sm text-gray-400">No companies yet.</p>
+                  <p className="text-sm text-gray-400">No companies yet. Find a company in Search or Top Movers and save it here.</p>
                 ) : (
-                  <ul className="space-y-2">
-                    {inList.map((it) => (
-                      <li key={it.id} className="flex items-center justify-between gap-2">
-                        <button
-                          onClick={() => onSelect(it.domain)}
-                          className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 text-left truncate"
-                        >
-                          <span className={`font-bold ${movementArrow(it.latest?.growth_momentum).color}`}>
-                            {movementArrow(it.latest?.growth_momentum).arrow}
-                          </span>
-                          <span className="truncate">{it.brand_name || it.domain}</span>
-                        </button>
-                        <button
-                          onClick={() => remove(it.domain, list)}
-                          className="text-xs text-gray-400 hover:text-red-500 shrink-0"
-                        >
-                          ✕
-                        </button>
-                      </li>
-                    ))}
+                  <ul className="divide-y divide-gray-100">
+                    {inList.map((it) => {
+                      const mom = it.latest?.growth_momentum;
+                      const { arrow, color } = movementArrow(mom);
+                      return (
+                        <li key={it.id} className="flex items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
+                          <button
+                            onClick={() => onSelect(it.domain)}
+                            className="flex-1 min-w-0 text-left group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-bold ${color}`}>{arrow}</span>
+                              <span className="text-sm font-medium text-gray-900 group-hover:text-indigo-600 truncate">
+                                {it.brand_name || it.domain}
+                              </span>
+                              {mom && (
+                                <span className={`shrink-0 text-[10px] font-semibold ${color}`}>
+                                  {MOMENTUM_EMOJI[mom] ?? ''}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-400 mt-0.5 pl-4">
+                              {it.domain}
+                              {it.latest?.active_meta_ads != null && it.latest.active_meta_ads > 0
+                                ? ` · ${it.latest.active_meta_ads} Meta ads`
+                                : ''}
+                              {it.latest?.revenue_range ? ` · ${it.latest.revenue_range}` : ''}
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => remove(it.domain, list)}
+                            className="shrink-0 text-gray-300 hover:text-red-500 text-xs px-1"
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </Card>

@@ -32,15 +32,31 @@ export async function GET() {
     const domains = [...new Set(list.map((i) => i.domain))];
     const latest = new Map<string, Record<string, unknown>>();
     if (domains.length) {
-      const { data: snaps } = await supabase
-        .from('domain_snapshots')
-        .select(
-          'domain, snapshot_date, growth_score, growth_momentum, active_meta_ads, active_google_ads, active_linkedin_ads, revenue_range'
-        )
-        .in('domain', domains)
-        .order('snapshot_date', { ascending: false });
-      for (const s of snaps ?? []) {
-        if (!latest.has(s.domain)) latest.set(s.domain, s); // first = most recent
+      // Prefer bulk signals (company_meta_signals) over snapshots — they're richer
+      // and more current for the majority of saved companies.
+      const { data: sigs } = await supabase
+        .from('company_meta_signals')
+        .select('domain, growth_score, growth_momentum, active_meta_ads, estimated_revenue_range')
+        .in('domain', domains);
+      for (const s of sigs ?? []) {
+        latest.set(s.domain as string, {
+          growth_score: s.growth_score,
+          growth_momentum: s.growth_momentum,
+          active_meta_ads: s.active_meta_ads,
+          revenue_range: s.estimated_revenue_range,
+        });
+      }
+      // Fill any gaps with snapshot data.
+      const missing = domains.filter((d) => !latest.has(d));
+      if (missing.length) {
+        const { data: snaps } = await supabase
+          .from('domain_snapshots')
+          .select('domain, growth_score, growth_momentum, active_meta_ads, revenue_range')
+          .in('domain', missing)
+          .order('snapshot_date', { ascending: false });
+        for (const s of snaps ?? []) {
+          if (!latest.has(s.domain as string)) latest.set(s.domain as string, s);
+        }
       }
     }
 
