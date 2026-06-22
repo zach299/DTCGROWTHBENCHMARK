@@ -235,12 +235,43 @@ async function fetchRank(n) {
   } catch { /* ignore */ }
 }
 
-async function enrich(domain, facebookUrl, companyName) {
-  const res = await fetch(`${API_BASE}/api/enrich-meta`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domain, facebook_url: facebookUrl || null, company_name: companyName || null, source: 'chrome_extension' }),
-  });
-  return res.ok ? res.json() : null;
+function setRefreshBadge(show) {
+  const badge = document.getElementById('refresh-badge');
+  if (badge) badge.style.display = show ? 'flex' : 'none';
+}
+
+function renderPending(domain) {
+  const brand = domain.replace(/^www\./, '').split('.')[0];
+  const initials = brand.slice(0, 2).toUpperCase();
+  el('result').innerHTML = `
+    <div class="brand-header">
+      <div class="brand-avatar" style="opacity:0.5">${initials}</div>
+      <div class="brand-meta">
+        <div class="r-name">${brand}</div>
+        <a class="r-domain" href="https://${domain}" target="_blank" rel="noopener">${domain} ${ICONS.link}</a>
+      </div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-icon">${ICONS.pulse}</div>
+      <div class="pending-body">
+        <div class="pending-title">Enriching now…</div>
+        <div class="pending-sub">First-time analysis takes ~30 seconds. Results save automatically — you can close this and reopen when done.</div>
+      </div>
+    </div>`;
+  el('result').classList.remove('hidden');
+}
+
+async function enrichBackground(domain, facebookUrl, companyName, onDone) {
+  try {
+    const res = await fetch(`${API_BASE}/api/enrich-meta`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, facebook_url: facebookUrl || null, company_name: companyName || null, source: 'chrome_extension' }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.ok && onDone) onDone(data);
+    }
+  } catch { /* network error — enrichment will be retried by worker */ }
 }
 
 async function analyze(domain) {
@@ -260,26 +291,35 @@ async function analyze(domain) {
     }
 
     if (data.signals) {
+      // Cached data — show immediately, no waiting.
       clearStatus();
       const n = normalize(data.signals, data.domain);
       n.cache_age_days = data.cache_age_days;
       render(n);
       fetchRank(n);
-    } else if (data.is_new) {
-      setStatus(loadingChart('New company — building Growth Signals…'));
-    } else {
-      setStatus(loadingChart('Analyzing…'));
-    }
 
-    if (data.needs_enrichment) {
-      const fresh = await enrich(data.domain, data.facebook_url, data.company_name);
+      if (data.needs_enrichment) {
+        // Stale cache — refresh silently in background, update if still open.
+        setRefreshBadge(true);
+        enrichBackground(data.domain, data.facebook_url, data.company_name, (fresh) => {
+          setRefreshBadge(false);
+          const updated = normalize(fresh.signals, data.domain);
+          updated.cache_age_days = 0;
+          render(updated);
+          fetchRank(updated);
+        });
+      }
+    } else {
+      // No cached data — show pending state, then populate when enrichment returns.
       clearStatus();
-      if (fresh?.ok) {
-        const n = normalize(fresh.signals, data.domain);
+      renderPending(data.domain || domain);
+      enrichBackground(data.domain || domain, data.facebook_url, data.company_name, (fresh) => {
+        const n = normalize(fresh.signals, data.domain || domain);
         n.cache_age_days = 0;
         render(n);
+        el('actions').classList.remove('hidden');
         fetchRank(n);
-      }
+      });
     }
   } catch {
     setStatus('<div class="error">Network error. Check the API URL in settings.</div>');
