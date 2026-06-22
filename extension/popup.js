@@ -1,4 +1,4 @@
-// Growth Signals — Chrome extension popup (premium dark redesign).
+// Growth Signals — Chrome extension popup (premium dark redesign v2).
 // Every lookup runs through /api/extension/lookup, which handles unknown domains
 // and returns 7-day cache state. Stale/missing data is enriched automatically.
 const DEFAULT_API_BASE = 'https://dtcgrowthbenchmark.vercel.app';
@@ -9,7 +9,7 @@ const SKIP_HOSTS = [
 const WATCHLISTS = ['Prospects', 'Clients', 'Competitors'];
 
 const MOMENTUM_COLOR = {
-  Exploding: 'green', Accelerating: 'green', Scaling: '', Emerging: 'amber', Dormant: 'muted',
+  Exploding: 'green', Accelerating: 'green', Scaling: 'indigo', Emerging: 'amber', Dormant: 'gray',
 };
 const MOMENTUM_EMOJI = { Dormant: '😴', Emerging: '🌱', Scaling: '📈', Accelerating: '🚀', Exploding: '💥' };
 
@@ -41,11 +41,14 @@ function normalize(sig, domain) {
     growth_momentum: s.growth_momentum || null,
     growth_score: s.growth_score || null,
     revenue_range: s.estimated_revenue_range || null,
+    revenue_confidence: s.revenue_confidence || null,
     meta: s.active_meta_ads ?? null,
     google: s.google_ads ?? 0,
     linkedin: s.linkedin_ads ?? 0,
+    campaign_themes: s.campaign_themes || [],
     real_creative_score: s.real_creative_score ?? null,
     dpa_share: s.dpa_share ?? null,
+    last_enriched_at: s.last_enriched_at || null,
     cache_age_days: null,
     rank: null,
     percentile_top: null,
@@ -54,9 +57,18 @@ function normalize(sig, domain) {
   };
 }
 
-function lastUpdated(days) {
+function lastUpdated(days, last_enriched_at) {
+  if (days == null && last_enriched_at) {
+    const hoursAgo = (Date.now() - new Date(last_enriched_at).getTime()) / 3600000;
+    if (hoursAgo < 1) return 'just now';
+    if (hoursAgo < 24) return `${Math.round(hoursAgo)}h ago`;
+    return `${Math.round(hoursAgo / 24)}d ago`;
+  }
   if (days == null) return 'just now';
-  if (days < 1) return 'today';
+  if (days < 1) {
+    // try hours
+    return 'today';
+  }
   if (days < 2) return 'yesterday';
   if (days < 30) return `${Math.round(days)}d ago`;
   return `${Math.round(days / 30)}mo ago`;
@@ -102,32 +114,71 @@ const ICONS = {
   globe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
   linkedin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  report: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  bookmark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
+  eye: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  miniChart: `<svg width="28" height="14" viewBox="0 0 28 14" fill="none" class="mini-chart"><polyline points="0,12 6,9 11,10 16,5 21,7 28,1" stroke="#7c6ef5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
-function metricRow(iconHtml, iconColor, label, valueHtml, valueClass) {
-  return `<div class="metric-row">
-    <div class="metric-icon ${iconColor}">${iconHtml}</div>
-    <div class="metric-label">${label}</div>
-    <div class="metric-value ${valueClass || ''}">${valueHtml}</div>
-    <div class="metric-chevron">${ICONS.chevron}</div>
-  </div>`;
+// ── Google G icon (colorful) ──
+function googleGIcon() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>`;
 }
 
-function creativeRing(score) {
-  if (score == null) return '<span style="color:var(--faint)">—</span>';
-  const r = 9, c = 2 * Math.PI * r;
-  const pct = Math.max(0, Math.min(100, score));
-  const dash = (pct / 100) * c;
-  const color = pct >= 65 ? '#3de0a0' : pct >= 40 ? '#f5a623' : '#9499b0';
-  return `<div class="creative-ring">
-    <svg class="ring-svg" width="22" height="22" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="${r}" fill="none" stroke="#1e2130" stroke-width="2.5"/>
-      <circle cx="12" cy="12" r="${r}" fill="none" stroke="${color}" stroke-width="2.5"
-        stroke-dasharray="${dash.toFixed(1)} ${c.toFixed(1)}"
-        stroke-linecap="round" transform="rotate(-90 12 12)"/>
-    </svg>
-    <span style="color:${color}">${score}/100</span>
-  </div>`;
+// ── Meta M icon ──
+function metaMIcon() {
+  return `<div class="ad-icon meta">M</div>`;
+}
+
+// ── LinkedIn in icon ──
+function linkedinIcon() {
+  return `<div class="ad-icon linkedin-icon" style="font-size:9px;font-weight:900;letter-spacing:-0.5px">in</div>`;
+}
+
+function briefText(n) {
+  const name = n.brand;
+  const cat = n.category ? n.category.toLowerCase() : 'DTC';
+  const meta = n.meta ?? 0;
+  const mom = n.growth_momentum;
+  const rev = n.revenue_range;
+
+  let s1 = `<b>${name}</b> is a ${cat} brand`;
+  if (rev) s1 += ` with estimated revenue of <b>${rev}</b>`;
+  s1 += '.';
+
+  let s2 = '';
+  if (mom === 'Exploding' || mom === 'Accelerating') {
+    s2 = ` Momentum is ${mom.toLowerCase()} — signals point to aggressive paid-media scaling`;
+    if (meta > 0) s2 += ` with <b>${meta} active Meta ads</b>`;
+    s2 += '.';
+  } else if (mom === 'Scaling') {
+    s2 = ' Scaling steadily across paid channels';
+    if (meta > 0) s2 += ` with <b>${meta} active Meta ads</b>`;
+    s2 += ' — a solid outreach prospect.';
+  } else if (mom === 'Emerging') {
+    s2 = ' Early-stage paid investment detected';
+    if (meta > 0) s2 += ` (<b>${meta} active Meta ads</b>)`;
+    s2 += ' — one to watch as they scale.';
+  } else if (meta > 0) {
+    s2 = ` Currently running <b>${meta} active Meta ads</b>`;
+    if ((n.google ?? 0) > 0) s2 += ` and <b>${n.google} Google ads</b>`;
+    s2 += '.';
+  } else {
+    s2 = ' Limited paid signal detected — open the full report for a deeper breakdown.';
+  }
+  return s1 + s2;
+}
+
+function briefConfidence(n) {
+  const meta = n.meta ?? 0;
+  if (meta >= 50 || n.real_creative_score != null) return { label: 'High Confidence', cls: 'green' };
+  if (meta >= 10) return { label: 'Good Signal', cls: 'amber' };
+  return { label: 'Low Signal', cls: 'gray' };
 }
 
 function insightText(n) {
@@ -159,65 +210,189 @@ function insightConfidence(n) {
   return 'Low Signal';
 }
 
+function revenueConfidenceLabel(conf) {
+  if (!conf) return { label: '', cls: 'gray' };
+  if (conf === 'high') return { label: 'High Confidence', cls: 'green' };
+  if (conf === 'medium') return { label: 'Med Confidence', cls: 'amber' };
+  return { label: 'Low Confidence', cls: 'gray' };
+}
+
+function faviconUrl(domain) {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+}
+
 function render(n) {
   current = n;
   const initials = n.brand.slice(0, 2).toUpperCase();
+  const domain = n.domain || '';
 
-  const rankBadge = n.rank != null
-    ? `<div class="rank-badge">📈 #${n.rank}${n.percentile_top != null ? ` · Top ${n.percentile_top}%` : ''}</div>`
-    : '';
+  // Momentum pill
+  const momColor = n.growth_momentum ? (MOMENTUM_COLOR[n.growth_momentum] || 'gray') : 'gray';
+  const momEmoji = n.growth_momentum ? (MOMENTUM_EMOJI[n.growth_momentum] || '') : '';
+  const momLabel = n.growth_momentum || 'Unknown';
+  const momentumPill = `<div class="momentum-pill ${momColor}">${momEmoji} ${momLabel}</div>`;
 
-  const metaVal = n.meta != null ? String(n.meta) : '—';
-  const momVal = n.growth_momentum
-    ? `${n.growth_momentum} ${MOMENTUM_EMOJI[n.growth_momentum] || ''}`
-    : '—';
-  const momClass = n.growth_momentum ? (MOMENTUM_COLOR[n.growth_momentum] || '') : 'muted';
-  const rankVal = n.rank != null ? `#${n.rank}` : n.growth_score != null ? `${n.growth_score}` : '—';
-  const catRankVal = n.category_rank != null
-    ? `#${n.category_rank}${n.category_total ? ` / ${n.category_total}` : ''}`
-    : null;
+  // Logo — favicon with initials fallback
+  const logoHtml = `
+    <div class="co-logo" id="co-logo-wrap">
+      <img src="${faviconUrl(domain)}" alt=""
+        onload="this.style.opacity=1"
+        onerror="this.style.display='none';document.getElementById('co-logo-wrap').textContent='${initials}'"
+        style="opacity:0;transition:opacity 0.2s"/>
+    </div>`;
 
-  const extraRows = [];
-  if ((n.google ?? 0) > 0) extraRows.push(metricRow(ICONS.globe, 'blue', 'Google Ads', String(n.google), ''));
-  if ((n.linkedin ?? 0) > 0) extraRows.push(metricRow(ICONS.linkedin, 'blue', 'LinkedIn Ads', String(n.linkedin), ''));
+  // Stats grid
+  const growthScore = n.growth_score != null ? String(n.growth_score) : '—';
+  const revRange = n.revenue_range || '—';
+  const revConf = revenueConfidenceLabel(n.revenue_confidence);
+  const metaCount = n.meta != null ? String(n.meta) : '—';
+  const googleCount = (n.google ?? 0) > 0 ? String(n.google) : '—';
+  const linkedinCount = (n.linkedin ?? 0) > 0 ? String(n.linkedin) : '—';
 
-  el('result').innerHTML = `
-    <div class="brand-header">
-      <div class="brand-avatar">${initials}</div>
-      <div class="brand-meta">
-        <div class="brand-name-row">
-          <div class="r-name">${n.brand}</div>
-        </div>
-        <a class="r-domain" href="https://${n.domain}" target="_blank" rel="noopener">
-          ${n.domain} ${ICONS.link}
-        </a>
-        ${rankBadge}
+  const statsGrid = `
+    <div class="stats-grid">
+      <div class="stat-col">
+        <div class="stat-value indigo">${growthScore}</div>
+        <div class="stat-icon-row">${ICONS.miniChart}</div>
+        <div class="stat-label">Growth Score</div>
       </div>
-    </div>
-
-    <div class="metrics">
-      ${metricRow(ICONS.megaphone, 'blue', 'Active Meta Ads', metaVal, '')}
-      ${metricRow(ICONS.pulse, 'green', 'Momentum', momVal, momClass)}
-      ${metricRow(ICONS.rank, 'purple', 'Growth Rank', rankVal, '')}
-      ${metricRow(ICONS.creative, 'blue', 'Creative Score', creativeRing(n.real_creative_score), '')}
-      ${catRankVal ? metricRow(ICONS.trophy, 'amber', 'Category Rank', catRankVal, '') : ''}
-      ${extraRows.join('')}
-      ${metricRow(ICONS.clock, 'gray', 'Last Updated', lastUpdated(n.cache_age_days), 'muted')}
-    </div>
-
-    <div class="insight-card">
-      <div class="insight-sparkle">✦</div>
-      <div class="insight-body">
-        <div class="insight-top">
-          <div class="insight-label">Key Insight</div>
-          <div class="confidence-badge">${insightConfidence(n)}</div>
-        </div>
-        <div class="insight-text">${insightText(n)}</div>
+      <div class="stat-col">
+        <div class="stat-value" style="font-size:13px;font-weight:700;letter-spacing:-0.01em">${revRange}</div>
+        <div class="stat-sub ${revConf.cls}">${revConf.label}</div>
+        <div class="stat-label" style="margin-top:3px">Est. Revenue</div>
+      </div>
+      <div class="stat-col">
+        <div class="stat-value">${metaCount}</div>
+        <div class="stat-icon-row">${metaMIcon()}</div>
+        <div class="stat-label">Meta Ads</div>
+      </div>
+      <div class="stat-col">
+        <div class="stat-value">${googleCount}</div>
+        <div class="stat-icon-row">${googleGIcon()}</div>
+        <div class="stat-label">Google Ads</div>
+      </div>
+      <div class="stat-col">
+        <div class="stat-value">${linkedinCount}</div>
+        <div class="stat-icon-row">${linkedinIcon()}</div>
+        <div class="stat-label">LinkedIn Ads</div>
       </div>
     </div>`;
 
+  // Campaign themes
+  const themes = (n.campaign_themes || []).slice(0, 6);
+  const themesSection = themes.length > 0 ? `
+    <div class="themes-section">
+      <div class="themes-label">Top Campaign Themes</div>
+      <div class="themes-pills">
+        ${themes.map((t) => `<div class="theme-pill">${t}</div>`).join('')}
+      </div>
+    </div>` : '';
+
+  // Research brief
+  const conf = briefConfidence(n);
+  const updatedStr = lastUpdated(n.cache_age_days, n.last_enriched_at);
+  const briefCard = `
+    <div class="brief-card">
+      <div class="brief-header">
+        <div class="brief-label">📋 Research Brief</div>
+        <div class="confidence-pill ${conf.cls}">${conf.label}</div>
+      </div>
+      <div class="brief-text">${briefText(n)}</div>
+      <div class="brief-footer">
+        ${ICONS.clock}
+        Last updated ${updatedStr}
+      </div>
+    </div>`;
+
+  // Action row with Save + Watchlist inline
+  const actionRow = `
+    <div class="action-row">
+      <button class="action-btn" id="open-report">
+        ${ICONS.report} Open Full Report
+      </button>
+      <button class="action-btn" id="save">
+        ${ICONS.bookmark} Save Company
+      </button>
+      <div class="add-wrap">
+        <button class="action-btn" id="add-watchlist">
+          ${ICONS.eye} Add to Watchlist
+        </button>
+        <div id="lists" class="lists hidden"></div>
+      </div>
+    </div>`;
+
+  // Big CTA
+  const ctaBtn = `
+    <button class="cta-btn" id="view-brief">
+      ✦ View Research Brief
+    </button>`;
+
+  el('result').innerHTML = `
+    <div class="co-header">
+      ${logoHtml}
+      <div class="co-info">
+        <div class="co-name">${n.brand}</div>
+        <a class="co-domain" href="https://${domain}" target="_blank" rel="noopener">
+          ${domain} ${ICONS.link}
+        </a>
+      </div>
+      ${momentumPill}
+    </div>
+    ${statsGrid}
+    ${themesSection}
+    ${briefCard}
+    ${actionRow}
+    ${ctaBtn}`;
+
   el('result').classList.remove('hidden');
-  el('actions').classList.remove('hidden');
+
+  // Re-bind inline buttons (they're now inside #result)
+  bindResultButtons(n);
+}
+
+function bindResultButtons(n) {
+  const openReport = el('open-report');
+  if (openReport) {
+    openReport.addEventListener('click', () => {
+      chrome.tabs.create({ url: `${API_BASE}/?domain=${encodeURIComponent(n.domain)}` });
+    });
+  }
+
+  const viewBrief = el('view-brief');
+  if (viewBrief) {
+    viewBrief.addEventListener('click', () => {
+      chrome.tabs.create({ url: `${API_BASE}/?domain=${encodeURIComponent(n.domain)}` });
+    });
+  }
+
+  const saveBtn = el('save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async (e) => {
+      await saveTo('Prospects');
+      e.currentTarget.innerHTML = `${ICONS.check} Saved`;
+      e.currentTarget.classList.add('ok');
+    });
+  }
+
+  const listsEl = el('lists');
+  if (listsEl) {
+    listsEl.innerHTML = WATCHLISTS.map((l) => `<button data-list="${l}">${l}</button>`).join('');
+    const watchlistBtn = el('add-watchlist');
+    if (watchlistBtn) {
+      watchlistBtn.addEventListener('click', () => listsEl.classList.toggle('hidden'));
+    }
+    listsEl.querySelectorAll('button').forEach((b) =>
+      b.addEventListener('click', async () => {
+        await saveTo(b.dataset.list);
+        listsEl.classList.add('hidden');
+        const btn = el('add-watchlist');
+        if (btn) {
+          btn.innerHTML = `${ICONS.check} ${b.dataset.list}`;
+          btn.classList.add('ok');
+        }
+      })
+    );
+  }
 }
 
 async function fetchRank(n) {
@@ -244,11 +419,13 @@ function renderPending(domain) {
   const brand = domain.replace(/^www\./, '').split('.')[0];
   const initials = brand.slice(0, 2).toUpperCase();
   el('result').innerHTML = `
-    <div class="brand-header">
-      <div class="brand-avatar" style="opacity:0.5">${initials}</div>
-      <div class="brand-meta">
-        <div class="r-name">${brand}</div>
-        <a class="r-domain" href="https://${domain}" target="_blank" rel="noopener">${domain} ${ICONS.link}</a>
+    <div class="co-header">
+      <div class="co-logo" style="opacity:0.45">${initials}</div>
+      <div class="co-info">
+        <div class="co-name" style="opacity:0.6">${brand}</div>
+        <a class="co-domain" href="https://${domain}" target="_blank" rel="noopener">
+          ${domain} ${ICONS.link}
+        </a>
       </div>
     </div>
     <div class="pending-card">
@@ -277,7 +454,6 @@ async function enrichBackground(domain, facebookUrl, companyName, onDone) {
 async function analyze(domain) {
   if (!domain) return;
   el('result').classList.add('hidden');
-  el('actions').classList.add('hidden');
   setStatus(loadingChart('Loading Growth Signals…'));
   try {
     const res = await fetch(`${API_BASE}/api/extension/lookup`, {
@@ -317,7 +493,6 @@ async function analyze(domain) {
         const n = normalize(fresh.signals, data.domain || domain);
         n.cache_age_days = 0;
         render(n);
-        el('actions').classList.remove('hidden');
         fetchRank(n);
       });
     }
@@ -343,29 +518,8 @@ async function saveTo(list) {
   el('analyze').addEventListener('click', () => analyze(el('domain').value.trim()));
   el('domain').addEventListener('keydown', (e) => { if (e.key === 'Enter') analyze(el('domain').value.trim()); });
   el('settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
-
   el('open-tab').addEventListener('click', () => chrome.tabs.create({ url: `${API_BASE}/` }));
 
-  el('open-report').addEventListener('click', () => {
-    if (current) chrome.tabs.create({ url: `${API_BASE}/?domain=${encodeURIComponent(current.domain)}` });
-  });
-
-  el('save').addEventListener('click', async (e) => {
-    await saveTo('Prospects');
-    e.currentTarget.innerHTML = `${ICONS.check} Saved`;
-    e.currentTarget.classList.add('ok');
-  });
-
-  const lists = el('lists');
-  lists.innerHTML = WATCHLISTS.map((l) => `<button data-list="${l}">${l}</button>`).join('');
-  el('add-watchlist').addEventListener('click', () => lists.classList.toggle('hidden'));
-  lists.querySelectorAll('button').forEach((b) =>
-    b.addEventListener('click', async () => {
-      await saveTo(b.dataset.list);
-      lists.classList.add('hidden');
-      const btn = el('add-watchlist');
-      btn.innerHTML = `${ICONS.check} ${b.dataset.list}`;
-      btn.classList.add('ok');
-    })
-  );
+  // Legacy #actions open-report / save / add-watchlist — now rendered inside #result per lookup.
+  // The legacy hidden #actions div in HTML is kept only for structural compat.
 })();
