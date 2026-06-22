@@ -147,7 +147,7 @@ function briefText(n) {
   const mom = n.growth_momentum;
   const rev = n.revenue_range;
 
-  let s1 = `<b>${name}</b> is a ${cat} brand`;
+  let s1 = `<b>${name}</b> is a ${cat.replace(/^\/+/, '').replace(/\//g, ' / ')} brand`;
   if (rev) s1 += ` with estimated revenue of <b>${rev}</b>`;
   s1 += '.';
 
