@@ -1,0 +1,46 @@
+name: Enrich Top 50k Brands
+
+on:
+  schedule:
+    # Runs every 20 minutes. Each run processes ~100 domains at concurrency 5
+    # (~10 minutes of work). 3 runs/hour × 100 = 300/hr = 7,200/day.
+    # 50k target completes in ~7 days.
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Domains per run'
+        default: '100'
+      max_total:
+        description: 'Max total to enrich this run'
+        default: '100'
+
+jobs:
+  enrich:
+    name: Enrich batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --omit=dev
+
+      - name: Run enrichment worker
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GROWTH_SIGNALS_API_BASE: ${{ secrets.GROWTH_SIGNALS_API_BASE }}
+          CONCURRENCY: '5'
+          SKIP_DAYS: '30'
+          MAX_RETRIES: '2'
+        run: |
+          BATCH=${{ github.event.inputs.batch || '100' }}
+          MAX=${{ github.event.inputs.max_total || '100' }}
+          node scripts/worker.mjs $BATCH $MAX
