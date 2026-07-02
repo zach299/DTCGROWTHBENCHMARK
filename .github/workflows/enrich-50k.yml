@@ -24,7 +24,7 @@ jobs:
   enrich:
     name: Enrich batch
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 350
 
     steps:
       - uses: actions/checkout@v4
