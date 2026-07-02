@@ -1,14 +1,15 @@
 'use client';
 
 // Build TAM List — filter bar + dense results table over /api/tam, with
-// client-side CSV export and MVP free-tier gating (localStorage counters; no
-// auth exists yet). Browsing and filtering are unlimited; exports and research
-// brief opens are quota'd per calendar month.
+// client-side CSV export and MVP free-tier gating (localStorage counters
+// namespaced by the signed-in Supabase user id). Browsing and filtering are
+// unlimited; exports and research brief opens are quota'd per calendar month.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TamFilters } from '@/lib/tamQuery';
 import type { SpendEstimate } from '@/lib/adSpend';
 import Skeleton from './Skeleton';
+import { useAuth } from './AuthProvider';
 import EmptyState from './EmptyState';
 import {
   DownloadIcon,
@@ -49,21 +50,22 @@ const EXPORT_LIMIT_PER_MONTH = 3;
 const EXPORT_ROW_CAP = 25;
 const BRIEF_LIMIT_PER_MONTH = 10;
 
-function monthKey(prefix: string): string {
+// Keys are namespaced by Supabase user id, e.g. `<user-id>:tam_exports_2026-07`.
+function monthKey(prefix: string, uid: string): string {
   const d = new Date();
-  return `${prefix}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${uid}:${prefix}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-function getCount(prefix: string): number {
+function getCount(prefix: string, uid: string): number {
   try {
-    return Number(localStorage.getItem(monthKey(prefix)) ?? 0) || 0;
+    return Number(localStorage.getItem(monthKey(prefix, uid)) ?? 0) || 0;
   } catch {
     return 0;
   }
 }
-function bumpCount(prefix: string): number {
-  const next = getCount(prefix) + 1;
+function bumpCount(prefix: string, uid: string): number {
+  const next = getCount(prefix, uid) + 1;
   try {
-    localStorage.setItem(monthKey(prefix), String(next));
+    localStorage.setItem(monthKey(prefix, uid), String(next));
   } catch {
     /* noop */
   }
@@ -171,6 +173,8 @@ export default function TamListBuilder({
   initialQuery?: string | null;
   onOpenBrief: (domain: string) => void;
 }) {
+  const { user } = useAuth();
+  const uid = user?.id ?? 'anon';
   const [data, setData] = useState<TamResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,8 +197,8 @@ export default function TamListBuilder({
   const [sort, setSort] = useState<'growth' | 'spend' | 'meta_ads' | 'newest'>('growth');
 
   useEffect(() => {
-    setQuota({ exports: getCount('tam_exports'), briefs: getCount('tam_briefs') });
-  }, []);
+    setQuota({ exports: getCount('tam_exports', uid), briefs: getCount('tam_briefs', uid) });
+  }, [uid]);
 
   const runQuery = useCallback(async (body: { query?: string; filters?: TamFilters }) => {
     const id = ++reqId.current;
@@ -303,7 +307,7 @@ export default function TamListBuilder({
   function exportCsv() {
     const rows = data?.accounts ?? [];
     if (rows.length === 0) return;
-    if (getCount('tam_exports') >= EXPORT_LIMIT_PER_MONTH) {
+    if (getCount('tam_exports', uid) >= EXPORT_LIMIT_PER_MONTH) {
       setUpgrade('export');
       return;
     }
@@ -331,7 +335,7 @@ export default function TamListBuilder({
     link.download = 'tambourine-tam-list.csv';
     link.click();
     URL.revokeObjectURL(url);
-    const used = bumpCount('tam_exports');
+    const used = bumpCount('tam_exports', uid);
     setQuota((q) => ({ ...q, exports: used }));
     flash(
       rows.length > EXPORT_ROW_CAP
@@ -341,11 +345,11 @@ export default function TamListBuilder({
   }
 
   function openBrief(domain: string) {
-    if (getCount('tam_briefs') >= BRIEF_LIMIT_PER_MONTH) {
+    if (getCount('tam_briefs', uid) >= BRIEF_LIMIT_PER_MONTH) {
       setUpgrade('brief');
       return;
     }
-    const used = bumpCount('tam_briefs');
+    const used = bumpCount('tam_briefs', uid);
     setQuota((q) => ({ ...q, briefs: used }));
     onOpenBrief(domain);
   }

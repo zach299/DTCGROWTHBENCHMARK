@@ -24,6 +24,9 @@ import {
   PersonIcon,
 } from '@/app/components/icons';
 import CommandHome from '@/app/components/CommandHome';
+import AuthScreen from '@/app/components/AuthScreen';
+import { useAuth } from '@/app/components/AuthProvider';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import TamListBuilder from '@/app/components/TamListBuilder';
 import EmptyState from '@/app/components/EmptyState';
 import { buildResearchBrief, type ResearchBriefInput } from '@/lib/researchBrief';
@@ -1125,7 +1128,108 @@ function BulkView() {
   );
 }
 
+// Initials for the user avatar, derived from the email local part
+// (e.g. "zach@…" → "ZA", "growth.team@…" → "GT").
+function emailInitials(email: string | null | undefined): string {
+  const local = (email ?? '').split('@')[0];
+  if (!local) return '?';
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return local.slice(0, 2).toUpperCase();
+}
+
+// Minimal full-screen loader shown while the Supabase session restores —
+// avoids flashing the login screen for already-signed-in users.
+function AuthLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center" style={{ background: '#0a0b10' }}>
+      <div className="flex h-12 w-12 animate-pulse items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-900/50">
+        <BoltIcon width={22} height={22} />
+      </div>
+    </div>
+  );
+}
+
+// Settings — minimal real account surface (email, password reset, sign out)
+// plus the placeholder copy for workspace settings.
+function SettingsView() {
+  const { user, signOut } = useAuth();
+  const [resetState, setResetState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  async function sendReset() {
+    if (!user?.email || resetState === 'sending') return;
+    setResetState('sending');
+    try {
+      const { error } = await getSupabaseBrowserClient().auth.resetPasswordForEmail(user.email, {
+        redirectTo: window.location.origin,
+      });
+      setResetState(error ? 'error' : 'sent');
+    } catch {
+      setResetState('error');
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <Card title="Account">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-300 ring-1 ring-indigo-500/30">
+              {emailInitials(user?.email)}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-gray-900">{user?.email ?? '—'}</div>
+              <div className="text-[11px] text-gray-500">Signed in with Supabase Auth</div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+            <button
+              onClick={sendReset}
+              disabled={resetState === 'sending'}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {resetState === 'sending' ? 'Sending…' : 'Send password reset email'}
+            </button>
+            <button
+              onClick={() => signOut()}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/20"
+            >
+              Sign out
+            </button>
+            {resetState === 'sent' && (
+              <span className="text-xs font-medium text-green-600">
+                Reset link sent to {user?.email}.
+              </span>
+            )}
+            {resetState === 'error' && (
+              <span className="text-xs font-medium text-red-500">
+                Couldn’t send the reset email — try again in a minute.
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
+      <Card title="Workspace">
+        <p className="text-sm text-gray-500">
+          Workspace preferences, team management, and plan controls will live here. For now,
+          everything runs on sensible defaults.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
 export default function Home() {
+  const { user, loading: authLoading } = useAuth();
+  if (authLoading) return <AuthLoader />;
+  if (!user) return <AuthScreen />;
+  return <AppShell />;
+}
+
+function AppShell() {
+  const { user, signOut } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [domain, setDomain] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1389,14 +1493,39 @@ export default function Home() {
           })}
         </nav>
 
-        <div className="mt-auto border-t border-gray-200 pt-3">
-          <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-gray-800">
+        <div className="relative mt-auto border-t border-gray-200 pt-3">
+          {userMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setUserMenuOpen(false)} />
+              <div className="absolute bottom-full left-2 right-2 z-30 mb-2 rounded-xl border border-white/10 bg-gray-900 py-1.5 shadow-2xl shadow-black/60">
+                <div className="border-b border-white/5 px-3 pb-2 pt-1">
+                  <div className="truncate text-xs font-medium text-gray-200">{user?.email}</div>
+                  <div className="text-[10px] text-gray-500">Tambourine Workspace</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    signOut();
+                  }}
+                  className="mt-1 block w-full px-3 py-1.5 text-left text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
+                >
+                  Sign out
+                </button>
+              </div>
+            </>
+          )}
+          <button
+            onClick={() => setUserMenuOpen((o) => !o)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-gray-800"
+          >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] font-bold text-indigo-300 ring-1 ring-indigo-500/30">
-              GT
+              {emailInitials(user?.email)}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-gray-200">Growth Team</span>
-              <span className="block truncate text-[11px] text-gray-500">Tambourine Workspace</span>
+              <span className="block truncate text-sm font-medium text-gray-200">
+                {user?.email ?? 'Signed in'}
+              </span>
+              <span className="block truncate text-[11px] text-gray-500">Workspace</span>
             </span>
             <ChevronUpDownIcon width={13} height={13} className="text-gray-500" />
           </button>
@@ -1417,7 +1546,7 @@ export default function Home() {
               <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
             </button>
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] font-bold text-indigo-300 ring-1 ring-indigo-500/30">
-              GT
+              {emailInitials(user?.email)}
             </span>
           </div>
         ) : (
@@ -1473,15 +1602,7 @@ export default function Home() {
               />
             </div>
           )}
-          {view === 'settings' && (
-            <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white">
-              <EmptyState
-                icon={<SettingsIcon width={18} height={18} />}
-                title="Settings are coming to Tambourine"
-                body="Workspace preferences, team management, and plan controls will live here. For now, everything runs on sensible defaults."
-              />
-            </div>
-          )}
+          {view === 'settings' && <SettingsView />}
           {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
           {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}
           {view === 'bulk' && <BulkView />}
