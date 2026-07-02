@@ -5,8 +5,9 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Growth Signals',
-  description: 'Ecommerce brand GTM intelligence',
+  title: 'Tambourine — Find your fastest-growing TAM',
+  description:
+    'Tambourine helps GTM teams build account lists from growth signals like ad activity, spend estimates, revenue, and market momentum.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -15,8 +15,8 @@ export default function MetricCard({
   footer?: ReactNode; // pinned bottom element (e.g. progress bar)
 }) {
   return (
-    <div className="relative min-w-0 px-5 py-4">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+    <div className="relative min-w-0 px-4 py-3">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
         {icon}
         {label}
       </div>

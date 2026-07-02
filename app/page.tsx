@@ -5,12 +5,9 @@ import {
   BoltIcon,
   TrendUpIcon,
   SearchIcon,
-  BuildingIcon,
-  LayersIcon,
   UploadIcon,
   StarIcon,
   BellIcon,
-  ChevronDownIcon,
   ChevronUpDownIcon,
   ExternalLinkIcon,
   InfoIcon,
@@ -21,7 +18,14 @@ import {
   MetaIcon,
   GoogleIcon,
   LinkedInIcon,
+  HomeIcon,
+  PlusSquareIcon,
+  SettingsIcon,
+  PersonIcon,
 } from '@/app/components/icons';
+import CommandHome from '@/app/components/CommandHome';
+import TamListBuilder from '@/app/components/TamListBuilder';
+import EmptyState from '@/app/components/EmptyState';
 import { buildResearchBrief, type ResearchBriefInput } from '@/lib/researchBrief';
 import { LENSES, getLens } from '@/lib/lenses';
 import type { Momentum } from '@/lib/intelligence';
@@ -497,14 +501,26 @@ function ResearchBriefBody({ text }: { text: string }) {
 }
 
 const NAV: { label: string; view: View; icon: React.ComponentType<React.SVGProps<SVGSVGElement>> }[] = [
+  { label: 'Home', view: 'home', icon: HomeIcon },
+  { label: 'Build TAM List', view: 'build', icon: PlusSquareIcon },
   { label: 'Top Movers', view: 'movers', icon: TrendUpIcon },
-  { label: 'Search', view: 'search', icon: SearchIcon },
-  { label: 'My Accounts', view: 'watchlist', icon: BuildingIcon },
-  { label: 'Bulk Enrichment', view: 'bulk', icon: LayersIcon },
-  { label: 'Import Data', view: 'import', icon: UploadIcon },
+  { label: 'Search Accounts', view: 'search', icon: SearchIcon },
+  { label: 'Watchlist', view: 'watchlist', icon: StarIcon },
+  { label: 'Alerts', view: 'alerts', icon: BellIcon },
+  { label: 'Imports', view: 'import', icon: UploadIcon },
+  { label: 'Settings', view: 'settings', icon: SettingsIcon },
 ];
 
-type View = 'search' | 'watchlist' | 'movers' | 'bulk' | 'import';
+type View =
+  | 'home'
+  | 'build'
+  | 'search'
+  | 'watchlist'
+  | 'movers'
+  | 'bulk'
+  | 'import'
+  | 'alerts'
+  | 'settings';
 
 interface WatchlistItem {
   id: number;
@@ -655,7 +671,7 @@ const IMPORT_COLUMNS = [
   'instagram_url', 'platform', 'tiktok_url',
 ];
 
-function ImportView() {
+function ImportView({ onOpenBulk }: { onOpenBulk: () => void }) {
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -800,9 +816,17 @@ function ImportView() {
   const fmt = (n: number) => n.toLocaleString();
   return (
     <div className="space-y-6 max-w-2xl">
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">Imports</h1>
+        <button
+          onClick={onOpenBulk}
+          className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900"
+        >
+          Open Bulk Enrichment →
+        </button>
+      </div>
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Import Data</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-gray-500 -mt-4">
           Upload a Store Leads CSV export into the company database. The file is read and
           uploaded in batches right here in the browser — no size limit, no Supabase dashboard.
           Rows are matched on <code className="text-gray-700">domain</code>, so re-uploading
@@ -1108,11 +1132,11 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<View>('movers');
+  const [view, setView] = useState<View>('home');
+  const [tamQuery, setTamQuery] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedTo, setSavedTo] = useState<string | null>(null);
   const [lens, setLens] = useState('measurement');
-  const [workspaceOpen, setWorkspaceOpen] = useState(true);
   const [wlCount, setWlCount] = useState<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -1329,67 +1353,41 @@ export default function Home() {
   return (
     <div className="dark-app min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <aside className="hidden md:flex w-[215px] shrink-0 flex-col border-r border-gray-200 bg-gray-900 text-gray-300 px-3 py-5">
-        <div className="flex items-center gap-2.5 px-2 mb-7">
+      <aside className="hidden lg:flex w-[215px] shrink-0 flex-col border-r border-gray-200 bg-gray-900 text-gray-300 px-3 py-5">
+        <button
+          onClick={() => setView('home')}
+          className="flex items-center gap-2.5 px-2 mb-7 text-left"
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-900/40">
             <BoltIcon width={16} height={16} />
           </div>
-          <span className="text-[15px] font-bold tracking-tight text-white">Growth Signals</span>
-        </div>
+          <span className="text-[15px] font-bold tracking-tight text-white">Tambourine</span>
+        </button>
         <nav className="space-y-0.5">
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = view === item.view;
+            const active = view === item.view || (item.view === 'import' && view === 'bulk');
             return (
               <button
                 key={item.label}
                 onClick={() => setView(item.view)}
                 className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                   active
-                    ? 'bg-indigo-500/10 font-medium text-white ring-1 ring-inset ring-indigo-500/30'
+                    ? 'bg-indigo-500/15 font-medium text-white ring-1 ring-inset ring-indigo-500/30'
                     : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`}
               >
                 <Icon width={15} height={15} className={active ? 'text-indigo-300' : 'text-gray-500'} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.view === 'watchlist' && wlCount != null && wlCount > 0 && (
+                  <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300 ring-1 ring-white/10">
+                    {wlCount}
+                  </span>
+                )}
               </button>
             );
           })}
         </nav>
-
-        <div className="my-4 border-t border-gray-200" />
-
-        <button
-          onClick={() => setWorkspaceOpen((o) => !o)}
-          className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500 hover:text-gray-300"
-        >
-          Workspace
-          <ChevronDownIcon
-            width={12}
-            height={12}
-            className={`transition-transform ${workspaceOpen ? '' : '-rotate-90'}`}
-          />
-        </button>
-        {workspaceOpen && (
-          <div className="mt-1 space-y-0.5">
-            <button
-              onClick={() => setView('watchlist')}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-800 hover:text-gray-200"
-            >
-              <StarIcon width={15} height={15} className="text-gray-500" />
-              <span className="flex-1">Watchlist</span>
-              {wlCount != null && wlCount > 0 && (
-                <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300 ring-1 ring-white/10">
-                  {wlCount}
-                </span>
-              )}
-            </button>
-            <div className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-gray-500 cursor-default">
-              <BellIcon width={15} height={15} className="text-gray-600" />
-              <span className="flex-1">Alerts</span>
-            </div>
-          </div>
-        )}
 
         <div className="mt-auto border-t border-gray-200 pt-3">
           <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-gray-800">
@@ -1398,7 +1396,7 @@ export default function Home() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-gray-200">Growth Team</span>
-              <span className="block truncate text-[11px] text-gray-500">Workspace</span>
+              <span className="block truncate text-[11px] text-gray-500">Tambourine Workspace</span>
             </span>
             <ChevronUpDownIcon width={13} height={13} className="text-gray-500" />
           </button>
@@ -1408,32 +1406,86 @@ export default function Home() {
       {/* Main */}
       <main className="flex-1 min-w-0">
         {/* Top bar */}
-        <div className="border-b border-gray-200 bg-white px-6 py-3 sticky top-0 z-10">
-          <form onSubmit={analyze}>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
-                <SearchIcon width={15} height={15} />
-              </span>
-              <input
-                ref={searchRef}
-                type="text"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="Search any company or domain..."
-                className="w-full rounded-xl border border-gray-300 bg-gray-50 pl-10 pr-16 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-gray-200 bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-400">
-                ⌘K
-              </span>
-            </div>
-          </form>
-        </div>
+        {view === 'home' ? (
+          <div className="flex items-center justify-end gap-3 px-6 py-3">
+            <button className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900">
+              <PersonIcon width={13} height={13} />
+              Invite teammates
+            </button>
+            <button className="relative rounded-lg p-1.5 text-gray-400 hover:text-gray-200" aria-label="Notifications">
+              <BellIcon width={16} height={16} />
+              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
+            </button>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] font-bold text-indigo-300 ring-1 ring-indigo-500/30">
+              GT
+            </span>
+          </div>
+        ) : (
+          <div className="border-b border-gray-200 bg-white px-6 py-3 sticky top-0 z-10">
+            <form onSubmit={analyze}>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                  <SearchIcon width={15} height={15} />
+                </span>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  placeholder="Search any company or domain..."
+                  className="w-full rounded-xl border border-gray-300 bg-gray-50 pl-10 pr-16 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-gray-200 bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-400">
+                  ⌘K
+                </span>
+              </div>
+            </form>
+          </div>
+        )}
 
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        <div className={view === 'home' ? 'px-4 py-6 sm:px-6' : 'mx-auto max-w-6xl px-4 py-6 sm:px-6'}>
+          {view === 'home' && (
+            <CommandHome
+              onBuild={(q) => {
+                setTamQuery(q);
+                setView('build');
+              }}
+              onSelectDomain={runAnalyze}
+              onOpenMovers={() => setView('movers')}
+              onOpenWatchlist={() => setView('watchlist')}
+            />
+          )}
+          {view === 'build' && <TamListBuilder initialQuery={tamQuery} onOpenBrief={runAnalyze} />}
+          {view === 'alerts' && (
+            <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white">
+              <EmptyState
+                icon={<BellIcon width={18} height={18} />}
+                title="Alerts are coming to Tambourine"
+                body="Watchlist changes — momentum shifts, new ad launches, spend jumps — will notify you here. Save accounts to your Watchlist now so alerts have something to watch."
+                action={
+                  <button
+                    onClick={() => setView('watchlist')}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+                  >
+                    Go to Watchlist
+                  </button>
+                }
+              />
+            </div>
+          )}
+          {view === 'settings' && (
+            <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white">
+              <EmptyState
+                icon={<SettingsIcon width={18} height={18} />}
+                title="Settings are coming to Tambourine"
+                body="Workspace preferences, team management, and plan controls will live here. For now, everything runs on sensible defaults."
+              />
+            </div>
+          )}
           {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
           {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}
           {view === 'bulk' && <BulkView />}
-          {view === 'import' && <ImportView />}
+          {view === 'import' && <ImportView onOpenBulk={() => setView('bulk')} />}
           {view === 'search' && (
           <>
           {error && (
@@ -1446,7 +1498,9 @@ export default function Home() {
 
           {!loading && !result && !error && (
             <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="h-12 w-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-2xl mb-5">⚡</div>
+              <div className="h-12 w-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white mb-5">
+                <BoltIcon width={22} height={22} />
+              </div>
               <h2 className="text-xl font-bold text-gray-900">Analyze any company</h2>
               <p className="mt-2 max-w-md text-sm text-gray-500">
                 Type a domain above to see its Growth Rank, momentum, modeled revenue, ad-platform
@@ -1604,7 +1658,7 @@ export default function Home() {
                     <Skeleton className="h-8 w-16" />
                   ) : rankInfo?.rank ? (
                     <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold text-gray-900 tabular-nums">#{rankInfo.rank}</span>
+                      <span className="text-xl font-bold text-gray-900 tabular-nums">#{rankInfo.rank}</span>
                       {rankInfo.percentile_top != null && (
                         <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
                           Top {rankInfo.percentile_top}%
@@ -1613,7 +1667,7 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span className={`text-2xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
+                      <span className={`text-xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
                       <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
                         {scoreLabel(gScore)}
                       </span>
@@ -1660,7 +1714,7 @@ export default function Home() {
                   }
                 >
                   {hasAnalysis || result.meta_ads ? (
-                    <div className="text-2xl font-bold text-gray-900 tabular-nums">{metaCount}</div>
+                    <div className="text-xl font-bold text-gray-900 tabular-nums">{metaCount}</div>
                   ) : (
                     <Skeleton className="h-8 w-12" />
                   )}
@@ -1851,14 +1905,25 @@ export default function Home() {
                     >
                       <div className="rounded-xl bg-indigo-500/[0.07] p-4 ring-1 ring-indigo-500/20">
                         <span className="mb-2 inline-block rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-indigo-300">
-                          AI
+                          Summary
                         </span>
                         <p className="text-[13px] leading-relaxed text-gray-800">{result.growth_narrative}</p>
                       </div>
+                      {result.growth_momentum && (
+                        <div className="mt-4">
+                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Why now
+                          </div>
+                          <p className="text-[12px] leading-snug text-gray-700">
+                            {momentumSub(result.growth_momentum)} — momentum is {result.growth_momentum.toLowerCase()}
+                            {metaCount > 0 ? ` with ${metaCount} active Meta ads in market.` : '.'}
+                          </p>
+                        </div>
+                      )}
                       {keyTakeaways(result).length > 0 && (
                         <div className="mt-4">
                           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Key takeaways
+                            Key signals
                           </div>
                           <ul className="space-y-1.5">
                             {keyTakeaways(result).map((t, i) => (
@@ -1870,8 +1935,18 @@ export default function Home() {
                           </ul>
                         </div>
                       )}
+                      {(lensAngle ?? result.recommended_angle) && (
+                        <div className="mt-4">
+                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Suggested pitch angle
+                          </div>
+                          <p className="text-[12px] leading-snug text-gray-700">
+                            {lensAngle ?? result.recommended_angle}
+                          </p>
+                        </div>
+                      )}
                       <p className="mt-4 flex items-center gap-1 border-t border-gray-100 pt-3 text-[10px] text-gray-500">
-                        AI-generated research · Not financial advice
+                        Derived from tracked ad and growth signals · directional, not financial advice
                         <InfoIcon width={10} height={10} />
                       </p>
                     </Card>
@@ -2303,7 +2378,7 @@ export default function Home() {
 
                   {/* Recommendations */}
                   {(lensAngle || result.recommended_buyer || result.outbound_hook) && (
-                  <Card title="Recommendations">
+                  <Card title="Suggested Outbound Angle">
                     <div className="space-y-3 text-sm">
                       {result.recommended_buyer && (
                         <div>

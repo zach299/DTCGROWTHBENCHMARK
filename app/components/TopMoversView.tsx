@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { SpendEstimate } from '@/lib/adSpend';
-import { formatSpend } from '@/lib/adSpend';
+import { formatSpend, revenueMidM } from '@/lib/adSpend';
+import { buildReason } from '@/lib/reason';
 import Skeleton from './Skeleton';
 import MiniSparkline from './MiniSparkline';
 import SpendEstimateBadge, { SPEND_HELPER } from './SpendEstimateBadge';
@@ -72,6 +73,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<SortKey>('fastest');
   const [cat, setCat] = useState<string>('');
+  const [minRevM, setMinRevM] = useState<number>(0);
 
   useEffect(() => {
     (async () => {
@@ -91,6 +93,12 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
 
   const rows = useMemo(() => {
     let list = cat ? movers.filter((m) => m.primary_category === cat) : [...movers];
+    if (minRevM > 0) {
+      list = list.filter((m) => {
+        const mid = revenueMidM(m.estimated_revenue_range);
+        return mid != null && mid >= minRevM;
+      });
+    }
     switch (sort) {
       case 'spend':
         list.sort((a, b) => (b.spend_estimate?.high ?? 0) - (a.spend_estimate?.high ?? 0));
@@ -116,7 +124,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
         break; // API order = growth score rank
     }
     return list;
-  }, [movers, sort, cat]);
+  }, [movers, sort, cat, minRevM]);
 
   // Header stat cards, computed from the full ranked set.
   const stats = useMemo(() => {
@@ -196,11 +204,23 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
             {s.label}
           </button>
         ))}
+        <select
+          value={minRevM}
+          onChange={(e) => setMinRevM(Number(e.target.value))}
+          className="ml-auto rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
+          title="Minimum estimated revenue"
+        >
+          <option value={0}>Any revenue</option>
+          <option value={1}>≥ $1M</option>
+          <option value={10}>≥ $10M</option>
+          <option value={50}>≥ $50M</option>
+          <option value={100}>≥ $100M</option>
+        </select>
         {categories.length > 0 && (
           <select
             value={cat}
             onChange={(e) => setCat(e.target.value)}
-            className="ml-auto rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
+            className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -244,6 +264,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                   <th className="px-3 py-2.5 text-right">Meta Ads</th>
                   <th className="hidden px-3 py-2.5 text-right sm:table-cell">Score</th>
                   <th className="hidden px-3 py-2.5 xl:table-cell">Momentum</th>
+                  <th className="hidden min-w-[220px] px-3 py-2.5 2xl:table-cell">Why interesting</th>
                   {anyChange && <th className="hidden px-3 py-2.5 text-right xl:table-cell">Δ 30d</th>}
                   {anyHistory && <th className="hidden px-3 py-2.5 xl:table-cell">Trend</th>}
                   <th className="hidden px-4 py-2.5 text-right lg:table-cell">Updated</th>
@@ -289,6 +310,17 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                     </td>
                     <td className={`hidden whitespace-nowrap px-3 py-2.5 text-xs font-semibold xl:table-cell ${MOMENTUM_TONE[m.growth_momentum ?? ''] ?? 'text-gray-400'}`}>
                       {m.growth_momentum ?? '—'}
+                    </td>
+                    <td className="hidden max-w-[300px] px-3 py-2.5 text-[12px] leading-snug text-gray-500 2xl:table-cell">
+                      {buildReason({
+                        metaAds: m.active_meta_ads,
+                        realCreativeScore: m.real_creative_score,
+                        dpaShare: m.dpa_share,
+                        momentum: m.growth_momentum,
+                        growthScore: m.growth_score,
+                        spend: m.spend_estimate ?? null,
+                        landingPages: m.landing_pages_count,
+                      })}
                     </td>
                     {anyChange && (
                       <td className="hidden px-3 py-2.5 text-right text-xs tabular-nums xl:table-cell">

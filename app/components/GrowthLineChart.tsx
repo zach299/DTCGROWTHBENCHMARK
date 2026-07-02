@@ -48,6 +48,9 @@ export default function GrowthLineChart({
   const gid = useId();
   const [hover, setHover] = useState<number | null>(null);
 
+  // Defensive: never render from invalid values, even if the caller slips.
+  points = points.filter((p) => p && Number.isFinite(p.value) && Number.isFinite(new Date(p.date).getTime()));
+
   if (points.length === 0) return null;
 
   if (points.length === 1) {
@@ -189,7 +192,7 @@ export default function GrowthLineChart({
       {points.length === 2 && (
         <div className="absolute right-2 top-1 rounded-md bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-gray-400 ring-1 ring-white/10">
           {changePct > 0 ? '+' : ''}
-          {changePct}% between snapshots
+          {changePct}% since last tracked
         </div>
       )}
       {hover != null && (
