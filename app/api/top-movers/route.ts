@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
+import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
 
 // The Top Movers discovery feed. Reads the enriched dataset and returns a
 // ranked leaderboard plus ready-made segments (top advertisers by channel,
@@ -25,19 +26,30 @@ interface Mover {
   percentile_top: number | null;
   real_creative_score: number | null;
   dpa_share: number | null;
+  spend_estimate: SpendEstimate | null;
 }
+
+// Supported ?sort= values. Default (unset / "fastest_growing") keeps the
+// existing growth-score ranking; other sorts reorder the same ranked set,
+// preserving each row's growth rank.
+type SortKey = 'fastest_growing' | 'highest_spend' | 'most_meta' | 'newly_enriched';
 
 function momentumFromAds(ads: number): string {
   return ads >= 100 ? 'Exploding' : ads >= 40 ? 'Accelerating' : ads >= 10 ? 'Scaling' : ads >= 1 ? 'Emerging' : 'Dormant';
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = createServiceClient();
+  const sortParam = new URL(request.url).searchParams.get('sort');
+  const sort: SortKey =
+    sortParam === 'highest_spend' || sortParam === 'most_meta' || sortParam === 'newly_enriched'
+      ? sortParam
+      : 'fastest_growing';
   try {
     const { data, count } = await supabase
       .from('company_meta_signals')
       .select(
-        'domain, company_name, primary_category, subcategory, active_meta_ads, google_ads, linkedin_ads, growth_score, growth_momentum, estimated_revenue_range, spend_band, landing_pages, last_enriched_at, real_creative_score, dpa_share',
+        'domain, company_name, primary_category, subcategory, active_meta_ads, google_ads, linkedin_ads, growth_score, growth_momentum, estimated_revenue_range, spend_band, landing_pages, last_enriched_at, real_creative_score, dpa_share, quality_adjusted_ads, creative_diversity_score',
         { count: 'exact' }
       )
       // Reject pre-fix keyword-contamination (global totals ~14k–50k). Real
@@ -68,8 +80,29 @@ export async function GET() {
         percentile_top: total > 0 ? Math.max(1, Math.ceil(((i + 1) / total) * 100)) : null,
         real_creative_score: r.real_creative_score != null ? Number(r.real_creative_score) : null,
         dpa_share: r.dpa_share != null ? Number(r.dpa_share) : null,
+        // Pure heuristic — cheap enough to run per row.
+        spend_estimate: estimateMonthlySpend({
+          metaAds: ads,
+          googleAds: Number(r.google_ads ?? 0),
+          linkedinAds: Number(r.linkedin_ads ?? 0),
+          qualityAdjustedAds: r.quality_adjusted_ads != null ? Number(r.quality_adjusted_ads) : null,
+          landingPages: Array.isArray(r.landing_pages) ? (r.landing_pages as unknown[]).length : null,
+          creativeDiversityScore:
+            r.creative_diversity_score != null ? Number(r.creative_diversity_score) : null,
+          revenueRange: (r.estimated_revenue_range as string) ?? null,
+          paidIntensity: null,
+        }),
       };
     });
+
+    // Apply the requested sort (rank stays the growth-score rank).
+    if (sort === 'highest_spend') {
+      movers.sort((a, b) => (b.spend_estimate?.high ?? 0) - (a.spend_estimate?.high ?? 0));
+    } else if (sort === 'most_meta') {
+      movers.sort((a, b) => b.active_meta_ads - a.active_meta_ads);
+    } else if (sort === 'newly_enriched') {
+      movers.sort((a, b) => (b.last_enriched_at ?? '').localeCompare(a.last_enriched_at ?? ''));
+    }
 
     // Discovery segments derived from the ranked set.
     const byMeta = [...movers].sort((a, b) => b.active_meta_ads - a.active_meta_ads).slice(0, 25);

@@ -3,9 +3,21 @@
   "name": "Growth Signals",
   "version": "1.0.0",
   "description": "Instant GTM intelligence for any company you're viewing — growth score, momentum, ad activity, and a research brief.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Growth Signals"
+    "default_title": "Growth Signals",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "permissions": ["activeTab", "storage"],
   "host_permissions": ["http://*/*", "https://*/*"],

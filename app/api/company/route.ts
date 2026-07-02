@@ -5,6 +5,7 @@ import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 import { getTrends, getTimeline } from '@/lib/trends';
 import { computeMomentum, revenueRange } from '@/lib/intelligence';
+import { estimateMonthlySpend } from '@/lib/adSpend';
 
 // Fast path: returns master_database company data + the latest cached analysis
 // (if any) without running any external enrichment. Target < 500ms.
@@ -211,9 +212,45 @@ export async function POST(request: Request) {
       metaRepaired = true;
     }
 
+    // Estimated monthly ad spend — pure heuristic over the stored signal (or,
+    // failing that, the cached analysis fields).
+    const analysisMeta = analysis?.meta_ads as Record<string, unknown> | null;
+    const spendEstimate = estimateMonthlySpend({
+      metaAds: storedMeta || Number(analysisMeta?.active_ads_count ?? 0),
+      googleAds: storedSig ? Number(storedSig.google_ads ?? 0) : null,
+      linkedinAds: storedSig ? Number(storedSig.linkedin_ads ?? 0) : null,
+      qualityAdjustedAds:
+        storedSig?.quality_adjusted_ads != null ? Number(storedSig.quality_adjusted_ads) : null,
+      landingPages: Array.isArray(storedSig?.landing_pages)
+        ? (storedSig!.landing_pages as unknown[]).length
+        : Array.isArray(analysisMeta?.unique_landing_pages)
+          ? (analysisMeta!.unique_landing_pages as unknown[]).length
+          : null,
+      creativeDiversityScore:
+        storedSig?.creative_diversity_score != null
+          ? Number(storedSig.creative_diversity_score)
+          : null,
+      revenueRange:
+        (storedSig?.estimated_revenue_range as string | null) ??
+        ((analysis?.revenue_range as string | undefined) || null),
+      paidIntensity:
+        (storedSig?.ad_activity_level as string | null) ??
+        ((analysis?.paid_media_signal as string | undefined) || null),
+    });
+
+    // Snapshot history for the Growth Over Time chart (ascending, up to 90).
+    const historyPromise = supabase
+      .from('domain_snapshots')
+      .select(
+        'snapshot_date, active_meta_ads, active_google_ads, active_linkedin_ads, landing_pages_count, growth_score, growth_momentum'
+      )
+      .eq('domain', company.domain)
+      .order('snapshot_date', { ascending: true })
+      .limit(90);
+
     // Trends from the immutable snapshot history (cheap read).
     const cachedMeta = analysis?.meta_ads as Record<string, unknown> | null;
-    const [trends, timeline] = await Promise.all([
+    const [trends, timeline, historyRes] = await Promise.all([
       getTrends(supabase, company.domain, {
         active_meta_ads: Number(cachedMeta?.active_ads_count ?? 0),
         landing_pages_count: Array.isArray(cachedMeta?.unique_landing_pages)
@@ -222,6 +259,7 @@ export async function POST(request: Request) {
         growth_score: Number(cached?.growth_score ?? 0),
       }),
       getTimeline(supabase, company.domain),
+      historyPromise,
     ]);
 
     return NextResponse.json({
@@ -230,6 +268,8 @@ export async function POST(request: Request) {
       analysis,
       trends,
       timeline,
+      history: historyRes.data ?? [],
+      spend_estimate: spendEstimate,
       cache_age_days: cacheAgeDays != null ? Math.round(cacheAgeDays * 10) / 10 : null,
       cache_fresh: cacheFresh,
       // Trigger background enrichment when there's no fresh cache, or when we

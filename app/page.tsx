@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import { buildResearchBrief, type ResearchBriefInput } from '@/lib/researchBrief';
 import { LENSES, getLens } from '@/lib/lenses';
 import type { Momentum } from '@/lib/intelligence';
+import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
+import Skeleton from '@/app/components/Skeleton';
+import MetricCard from '@/app/components/MetricCard';
+import SpendEstimateBadge, { SPEND_HELPER } from '@/app/components/SpendEstimateBadge';
+import GrowthOverTime, { type SnapshotRow } from '@/app/components/GrowthOverTime';
+import TopMoversView from '@/app/components/TopMoversView';
 
 interface MetaAds {
   advertiser_name: string | null;
@@ -111,6 +117,8 @@ interface AnalysisResult {
   spend_band?: string | null;
   primary_category?: string | null;
   paid_media_quality?: PaidMediaQuality | null;
+  history?: SnapshotRow[] | null;
+  spend_estimate?: SpendEstimate | null;
 }
 
 interface PaidMediaQuality {
@@ -296,10 +304,6 @@ function briefInputFrom(result: AnalysisResult): ResearchBriefInput | null {
   };
 }
 
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
-}
-
 function LoadingChart({ label = 'Loading Growth Signals…' }: { label?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-5">
@@ -344,15 +348,6 @@ function TrendStat({ label, value, trend }: { label: string; value: number; tren
       ) : (
         <div className="text-xs text-gray-400">tracking…</div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex-1 min-w-[150px] px-5 py-4">
-      <div className="text-xs font-medium text-gray-500 mb-1">{label}</div>
-      {children}
     </div>
   );
 }
@@ -571,26 +566,6 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
   );
 }
 
-interface Mover {
-  rank: number;
-  domain: string;
-  company_name: string | null;
-  primary_category?: string | null;
-  active_meta_ads: number;
-  google_ads?: number;
-  linkedin_ads?: number;
-  creative_velocity?: string | null;
-  growth_score?: number;
-  growth_momentum: string | null;
-  estimated_revenue_range?: string | null;
-  spend_band?: string | null;
-  landing_pages_count: number;
-  percentile_top: number | null;
-  last_enriched_at: string | null;
-  real_creative_score?: number | null;
-  dpa_share?: number | null;
-}
-
 function relativeTime(iso: string | null): string {
   if (!iso) return '—';
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -598,200 +573,6 @@ function relativeTime(iso: string | null): string {
   if (days === 1) return 'yesterday';
   if (days < 30) return `${days}d ago`;
   return `${Math.floor(days / 30)}mo ago`;
-}
-
-type MoverTab = 'fastest' | 'meta' | 'google' | 'linkedin' | 'new' | 'top1' | 'category';
-const MOVER_TABS: { key: MoverTab; label: string }[] = [
-  { key: 'fastest', label: 'Fastest Growing' },
-  { key: 'meta', label: 'Top Meta' },
-  { key: 'google', label: 'Top Google' },
-  { key: 'linkedin', label: 'Top LinkedIn' },
-  { key: 'new', label: 'Newly Enriched' },
-  { key: 'top1', label: 'Entering Top 1%' },
-  { key: 'category', label: 'By Category' },
-];
-
-function TopMoversView({ onSelect }: { onSelect: (d: string) => void }) {
-  const [movers, setMovers] = useState<Mover[]>([]);
-  const [segments, setSegments] = useState<Record<string, Mover[]>>({});
-  const [categories, setCategories] = useState<string[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<MoverTab>('fastest');
-  const [cat, setCat] = useState<string>('');
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/top-movers');
-        const d = await r.json();
-        setMovers(d.movers ?? []);
-        setSegments(d.segments ?? {});
-        setCategories(d.categories ?? []);
-        setTotal(d.total ?? 0);
-        if ((d.categories ?? []).length) setCat(d.categories[0]);
-      } catch {
-        setMovers([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  // The list to show depends on the active tab/segment.
-  const sorted: Mover[] =
-    tab === 'meta' ? segments.top_meta ?? []
-    : tab === 'google' ? segments.top_google ?? []
-    : tab === 'linkedin' ? segments.top_linkedin ?? []
-    : tab === 'new' ? segments.newly_enriched ?? []
-    : tab === 'top1' ? segments.entering_top_1 ?? []
-    : tab === 'category' ? movers.filter((m) => m.primary_category === cat)
-    : movers;
-
-  const subtitle =
-    tab === 'meta' ? 'Top Meta advertisers by active ad volume'
-    : tab === 'google' ? 'Top Google advertisers'
-    : tab === 'linkedin' ? 'Top LinkedIn advertisers'
-    : tab === 'new' ? 'Most recently enriched companies'
-    : tab === 'top1' ? 'Companies in the Top 1% of growth'
-    : tab === 'category' ? `Top ${cat} brands by growth`
-    : `${total.toLocaleString()} companies tracked · ranked by Growth Score`;
-
-  const brand = (m: Mover) => m.company_name || m.domain.replace(/^www\./, '').split('.')[0];
-  const maxScore = Math.max(1, ...sorted.map((m) => m.growth_score || 0));
-
-  const top1Count = movers.filter((m) => m.percentile_top != null && m.percentile_top <= 1).length;
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Top Movers</h1>
-        <p className="text-sm text-gray-500">{subtitle}</p>
-      </div>
-      {!loading && total > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            ['Companies Tracked', total.toLocaleString()],
-            ['In Top 1%', top1Count.toLocaleString()],
-            ['Categories', String(categories.length || '—')],
-          ].map(([label, val]) => (
-            <div key={label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-              <div className="text-xl font-bold text-gray-900">{val}</div>
-              <div className="text-[11px] text-gray-500">{label}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-        {MOVER_TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`rounded-md px-3 py-1.5 font-medium ${
-              tab === t.key ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-        {tab === 'category' && categories.length > 0 && (
-          <select
-            value={cat}
-            onChange={(e) => setCat(e.target.value)}
-            className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
-          >
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : sorted.length === 0 ? (
-        <Card>
-          <p className="text-sm text-gray-400">
-            No companies enriched yet. Run a batch in Bulk Enrichment to build the leaderboard.
-          </p>
-        </Card>
-      ) : (
-        <Card>
-          {/* Column header for a premium terminal feel */}
-          <div className="hidden md:flex items-center gap-4 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100">
-            <div className="w-10">Rank</div>
-            <div className="flex-1">Company</div>
-            <div className="hidden lg:block w-24 text-center">Creative</div>
-            <div className="hidden md:block w-28 text-right">Momentum</div>
-            <div className="hidden lg:flex gap-3"><div className="w-14 text-right">Meta</div><div className="w-14 text-right">Google</div><div className="w-14 text-right">LinkedIn</div></div>
-            <div className="hidden xl:block w-20 text-right">Updated</div>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {sorted.map((m) => {
-              const score = m.growth_score || 0;
-              const barPct = Math.max(4, Math.round((score / maxScore) * 100));
-              const rcs = m.real_creative_score;
-              const dpa = m.dpa_share ?? 0;
-              const qTone = rcs == null ? 'bg-gray-300' : rcs >= 55 ? 'bg-green-500' : rcs >= 35 ? 'bg-yellow-400' : 'bg-gray-400';
-              return (
-                <button
-                  key={m.domain}
-                  onClick={() => onSelect(m.domain)}
-                  className="flex w-full items-center gap-4 py-2.5 text-left hover:bg-gray-50 -mx-2 px-2 rounded-lg"
-                >
-                  <div className={`w-10 text-sm font-bold ${m.rank <= 3 ? 'text-indigo-500' : 'text-gray-400'}`}>
-                    {m.rank <= 3 ? ['🥇', '🥈', '🥉'][m.rank - 1] : `#${m.rank}`}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-900 truncate capitalize">{brand(m)}</span>
-                      {m.percentile_top != null && m.percentile_top <= 5 && (
-                        <span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">Top {m.percentile_top}%</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-400 truncate">
-                      {m.domain}
-                      {m.primary_category ? ` · ${m.primary_category}` : ''}
-                      {m.estimated_revenue_range && m.estimated_revenue_range !== 'Unknown' ? ` · ${m.estimated_revenue_range}` : ''}
-                    </div>
-                    {/* Growth Score bar */}
-                    <div className="mt-1 h-1 w-full max-w-[220px] rounded-full bg-gray-100 overflow-hidden">
-                      <div className="h-full bg-indigo-400" style={{ width: `${barPct}%` }} />
-                    </div>
-                  </div>
-                  {/* Creative quality */}
-                  <div className="hidden lg:flex w-24 flex-col items-center" title={`Real Creative Score${rcs != null ? ` ${rcs}` : ''} · DPA ${Math.round(dpa * 100)}%`}>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`h-2 w-2 rounded-full ${qTone}`} />
-                      <span className="text-sm font-bold text-gray-900">{rcs ?? '—'}</span>
-                    </div>
-                    <div className="text-[10px] text-gray-400">{dpa >= 0.5 ? 'catalog-heavy' : 'real creative'}</div>
-                  </div>
-                  {m.growth_momentum && (
-                    <span className={`hidden md:inline w-28 text-right text-xs font-semibold ${momentumColor(m.growth_momentum)}`}>
-                      {m.growth_momentum} {MOMENTUM_EMOJI[m.growth_momentum] || ''}
-                    </span>
-                  )}
-                  <div className="hidden lg:flex items-center gap-3 text-right">
-                    <div className="w-14"><div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div></div>
-                    <div className="w-14"><div className="text-sm font-bold text-gray-500">{m.google_ads ?? 0}</div></div>
-                    <div className="w-14"><div className="text-sm font-bold text-gray-500">{m.linkedin_ads ?? 0}</div></div>
-                  </div>
-                  <div className="lg:hidden w-16 text-right">
-                    <div className="text-sm font-bold text-gray-900">{m.active_meta_ads}</div>
-                    <div className="text-[10px] text-gray-400">Meta</div>
-                  </div>
-                  <div className="hidden xl:block w-20 text-right text-[11px] text-gray-400">
-                    {relativeTime(m.last_enriched_at)}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-    </div>
-  );
 }
 
 interface BulkStats {
@@ -1391,6 +1172,8 @@ export default function Home() {
         company: data.company,
         trends: data.trends ?? null,
         timeline: data.timeline ?? null,
+        history: data.history ?? null,
+        spend_estimate: data.spend_estimate ?? null,
         cached: Boolean(data.analysis),
         enriching: Boolean(data.needs_enrichment),
         cache_age_days: data.cache_age_days ?? null,
@@ -1409,7 +1192,14 @@ export default function Home() {
           });
           const fresh = await enrichRes.json();
           if (enrichRes.ok) {
-            setResult({ ...fresh, enriching: false });
+            // The enrichment response doesn't carry snapshot history or the
+            // spend estimate — keep them from phase 1.
+            setResult({
+              ...fresh,
+              history: fresh.history ?? base.history,
+              spend_estimate: fresh.spend_estimate ?? base.spend_estimate,
+              enriching: false,
+            });
           } else {
             // keep phase-1 view; just stop the enriching indicator
             setResult((r) => (r ? { ...r, enriching: false } : r));
@@ -1441,6 +1231,22 @@ export default function Home() {
   const hasAnalysis = result?.growth_score != null;
   const enriching = Boolean(result?.enriching);
   const gScore = result?.growth_score ?? 0;
+  // Server-provided estimate when available; otherwise recompute client-side
+  // from the same pure heuristic (e.g. after a fresh enrichment response).
+  const spendEst: SpendEstimate | null =
+    result?.spend_estimate ??
+    (result
+      ? estimateMonthlySpend({
+          metaAds: metaCount,
+          googleAds: adCount(result, 'Google'),
+          linkedinAds: adCount(result, 'LinkedIn'),
+          qualityAdjustedAds: result.paid_media_quality?.quality_adjusted_ads ?? null,
+          landingPages: result.meta_ads?.unique_landing_pages?.length ?? null,
+          creativeDiversityScore: result.paid_media_quality?.creative_diversity_score ?? null,
+          revenueRange: result.revenue_range ?? null,
+          paidIntensity: result.paid_media_signal ?? null,
+        })
+      : null);
 
   return (
     <div className="dark-app min-h-screen bg-gray-50 flex">
@@ -1457,8 +1263,10 @@ export default function Home() {
             <button
               key={item.label}
               onClick={() => setView(item.view)}
-              className={`block w-full text-left rounded-lg px-3 py-2 text-sm ${
-                view === item.view ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-200'
+              className={`relative block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                view === item.view
+                  ? 'bg-indigo-500/10 font-medium text-white ring-1 ring-inset ring-indigo-500/30'
+                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
               }`}
             >
               {item.label}
@@ -1495,7 +1303,7 @@ export default function Home() {
           </form>
         </div>
 
-        <div className="px-6 py-6 max-w-6xl mx-auto">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
           {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
           {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}
           {view === 'bulk' && <BulkView />}
@@ -1537,12 +1345,12 @@ export default function Home() {
               {/* Brand header */}
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="h-14 w-14 rounded-full bg-gray-900 text-white flex items-center justify-center text-lg font-bold uppercase">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-lg font-bold uppercase text-white shadow-lg shadow-indigo-900/30 ring-1 ring-white/10">
                     {brandName.slice(0, 2)}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h1 className="text-2xl font-bold text-gray-900">{brandName}</h1>
+                      <h1 className="text-2xl font-bold tracking-tight text-gray-900 capitalize">{brandName}</h1>
                       {enriching ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-600">
                           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
@@ -1555,10 +1363,19 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <span>{result.domain}</span>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                      <a
+                        href={`https://${result.domain.replace(/^https?:\/\//, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-indigo-400 hover:underline"
+                      >
+                        {result.domain}
+                      </a>
                       {(result.primary_category || cstr(result.company, 'categories')) && (
-                        <span className="text-gray-400">· {result.primary_category || cstr(result.company, 'categories')}</span>
+                        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                          {result.primary_category || cstr(result.company, 'categories')?.replace(/^\//, '').split('/')[0]}
+                        </span>
                       )}
                       {cstr(result.company, 'platform') && (
                         <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200">
@@ -1620,79 +1437,96 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Stat row */}
-              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-wrap divide-x divide-gray-100">
-                <StatCard label="Growth Rank">
+              {/* Metric row */}
+              <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:grid-cols-3 xl:grid-cols-6 divide-x divide-y divide-gray-100 xl:divide-y-0">
+                <MetricCard
+                  label="Growth Rank"
+                  sub={
+                    hasAnalysis && rankInfo?.rank
+                      ? `Score ${gScore} · of ${rankInfo.total.toLocaleString()} tracked`
+                      : undefined
+                  }
+                >
                   {!hasAnalysis ? (
-                    <Skeleton className="h-9 w-16" />
+                    <Skeleton className="h-8 w-16" />
                   ) : rankInfo?.rank ? (
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold text-gray-900">#{rankInfo.rank}</span>
-                        {rankInfo.percentile_top != null && (
-                          <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                            Top {rankInfo.percentile_top}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-400">
-                        Score {gScore} · of {rankInfo.total.toLocaleString()} tracked
-                      </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-gray-900 tabular-nums">#{rankInfo.rank}</span>
+                      {rankInfo.percentile_top != null && (
+                        <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
+                          Top {rankInfo.percentile_top}%
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span className={`text-3xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
-                      <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                      <span className={`text-2xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
+                      <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
                         {scoreLabel(gScore)}
                       </span>
                     </div>
                   )}
-                </StatCard>
-                <StatCard label="Paid Media Intensity">
+                </MetricCard>
+                <MetricCard label="Paid Media Intensity">
                   {hasAnalysis ? (
-                    <div className="text-2xl font-bold text-gray-900">
+                    <div className="text-xl font-bold text-gray-900">
                       {intensityLabel(result.paid_media_signal ?? '')}
                     </div>
                   ) : (
-                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-7 w-20" />
                   )}
-                </StatCard>
-                <StatCard label="Est. Yearly Revenue">
-                  <div className="text-2xl font-bold text-gray-900">
+                </MetricCard>
+                <MetricCard
+                  label="Est. Revenue"
+                  sub={
+                    result.revenue_confidence ? (
+                      <span
+                        className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${confidenceBadge(result.revenue_confidence)}`}
+                      >
+                        {result.revenue_confidence} confidence
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  <div className="text-xl font-bold text-gray-900 tabular-nums">
                     {result.revenue_range ?? formatMoney(sales)}
                   </div>
-                  {result.revenue_confidence && (
-                    <span
-                      className={`mt-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${confidenceBadge(result.revenue_confidence)}`}
-                    >
-                      {result.revenue_confidence} confidence
-                    </span>
-                  )}
-                </StatCard>
-                <StatCard label="Active Meta Ads">
+                </MetricCard>
+                <MetricCard
+                  label="Active Meta Ads"
+                  sub={
+                    result.paid_media_quality &&
+                    result.paid_media_quality.quality_adjusted_ads < metaCount * 0.7
+                      ? `~${result.paid_media_quality.quality_adjusted_ads} effective`
+                      : undefined
+                  }
+                >
                   {hasAnalysis || result.meta_ads ? (
-                    <div>
-                      <div className="text-3xl font-bold text-gray-900">{metaCount}</div>
-                      {result.paid_media_quality && result.paid_media_quality.quality_adjusted_ads < metaCount * 0.7 && (
-                        <div className="text-[10px] text-gray-400 mt-0.5">
-                          ~{result.paid_media_quality.quality_adjusted_ads} effective
-                        </div>
-                      )}
-                    </div>
+                    <div className="text-2xl font-bold text-gray-900 tabular-nums">{metaCount}</div>
                   ) : (
-                    <Skeleton className="h-9 w-12" />
+                    <Skeleton className="h-8 w-12" />
                   )}
-                </StatCard>
-                <StatCard label="Growth Momentum">
+                </MetricCard>
+                <MetricCard label="Est. Monthly Ad Spend" sub={spendEst ? SPEND_HELPER : undefined}>
+                  {hasAnalysis || result.meta_ads ? (
+                    <SpendEstimateBadge estimate={spendEst} />
+                  ) : (
+                    <Skeleton className="h-7 w-24" />
+                  )}
+                </MetricCard>
+                <MetricCard label="Growth Momentum">
                   {result.growth_momentum ? (
-                    <div className={`text-xl font-bold ${momentumColor(result.growth_momentum)}`}>
+                    <div className={`text-lg font-bold ${momentumColor(result.growth_momentum)}`}>
                       {result.growth_momentum} {MOMENTUM_EMOJI[result.growth_momentum] ?? ''}
                     </div>
                   ) : (
-                    <Skeleton className="h-7 w-28" />
+                    <Skeleton className="h-7 w-24" />
                   )}
-                </StatCard>
+                </MetricCard>
               </div>
+
+              {/* Growth Over Time — snapshot history chart */}
+              {result.history != null && <GrowthOverTime history={result.history} />}
 
               {/* Category & Channel Benchmarks */}
               {rankInfo && (rankInfo.category_rank != null || (rankInfo.channels?.some((c) => c.ads > 0))) && (
@@ -1895,12 +1729,21 @@ export default function Home() {
                         </button>
                       }
                     >
-                      <p className="text-gray-800 leading-relaxed">{result.growth_narrative}</p>
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-indigo-400">
+                          Analyst Summary
+                        </div>
+                        <div className="border-l-2 border-indigo-500/60 pl-4">
+                          <p className="text-[15px] leading-relaxed text-gray-800">
+                            {result.growth_narrative}
+                          </p>
+                        </div>
+                      </div>
                       <div className="flex flex-wrap gap-2 mt-4">
                         {narrativeTags(result).map((t) => (
                           <span
                             key={t}
-                            className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700"
+                            className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-200/40"
                           >
                             {t}
                           </span>

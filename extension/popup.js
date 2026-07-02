@@ -50,6 +50,8 @@ function normalize(sig, domain) {
     dpa_share: s.dpa_share ?? null,
     last_enriched_at: s.last_enriched_at || null,
     cache_age_days: null,
+    history: [],
+    spend_estimate: null,
     rank: null,
     percentile_top: null,
     category_rank: null,
@@ -221,6 +223,86 @@ function faviconUrl(domain) {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
 }
 
+// ── Growth trend mini chart (hand-rolled inline SVG) ──
+function historyChange(history) {
+  const pts = (history || []).filter((h) => h && h.growth_score != null);
+  if (pts.length < 2) return null;
+  const first = pts[0].growth_score;
+  const last = pts[pts.length - 1].growth_score;
+  if (!first) return null;
+  const pct = ((last - first) / Math.abs(first)) * 100;
+  return { pct: Math.round(pct * 10) / 10, first, last };
+}
+
+function trendSection(history) {
+  const pts = (history || []).filter((h) => h && h.growth_score != null);
+  let body;
+  if (pts.length < 2) {
+    body = `<div class="trend-empty">Tracking started — history builds with each refresh</div>`;
+  } else {
+    const W = 440, H = 64, PAD = 6;
+    const vals = pts.map((p) => p.growth_score);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const span = max - min || 1;
+    const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
+    const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
+    const coords = pts.map((p, i) => [x(i), y(p.growth_score)]);
+    const line = coords.map(([cx, cy]) => `${cx.toFixed(1)},${cy.toFixed(1)}`).join(' ');
+    const area = `${PAD},${H} ${line} ${(W - PAD).toFixed(1)},${H}`;
+    const [lx, ly] = coords[coords.length - 1];
+    const chg = historyChange(history);
+    const chgLabel = chg
+      ? `<span class="trend-change ${chg.pct >= 0 ? 'up' : 'down'}">${chg.pct >= 0 ? '+' : ''}${chg.pct}%</span>`
+      : '';
+    body = `
+      <div class="trend-chart-wrap">
+        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="trend-svg" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#7c6ef5" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#7c6ef5" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="trend-stroke" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#7c6ef5"/>
+              <stop offset="100%" stop-color="#3de0a0"/>
+            </linearGradient>
+          </defs>
+          <polygon points="${area}" fill="url(#trend-fill)"/>
+          <polyline points="${line}" fill="none" stroke="url(#trend-stroke)"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3.5" fill="#3de0a0"
+            stroke="#10121a" stroke-width="1.5"/>
+        </svg>
+        <div class="trend-meta">
+          <span class="trend-range">${pts.length} snapshots</span>
+          ${chgLabel}
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="trend-section">
+      <div class="themes-label">Growth Trend</div>
+      ${body}
+    </div>`;
+}
+
+// ── Est. monthly ad spend row ──
+function spendRow(spend) {
+  if (!spend || !spend.label) return '';
+  const dot = spend.confidence === 'high' ? 'green' : spend.confidence === 'medium' ? 'amber' : 'gray';
+  return `
+    <div class="spend-row">
+      <div class="spend-left">
+        <div class="spend-label">Est. Monthly Ad Spend</div>
+        <div class="spend-sub">Estimated from ad signals</div>
+      </div>
+      <div class="spend-right">
+        <span class="conf-dot ${dot}"></span>
+        <span class="spend-value">${spend.label}</span>
+      </div>
+    </div>`;
+}
+
 function render(n) {
   current = n;
   const initials = n.brand.slice(0, 2).toUpperCase();
@@ -230,7 +312,11 @@ function render(n) {
   const momColor = n.growth_momentum ? (MOMENTUM_COLOR[n.growth_momentum] || 'gray') : 'gray';
   const momEmoji = n.growth_momentum ? (MOMENTUM_EMOJI[n.growth_momentum] || '') : '';
   const momLabel = n.growth_momentum || 'Unknown';
-  const momentumPill = `<div class="momentum-pill ${momColor}">${momEmoji} ${momLabel}</div>`;
+  const chg = historyChange(n.history);
+  const changePill = chg
+    ? `<div class="change-pill ${chg.pct >= 0 ? 'up' : 'down'}" title="Growth score change across tracked snapshots">${chg.pct >= 0 ? '+' : ''}${chg.pct}% since last tracked</div>`
+    : '';
+  const momentumPill = `<div class="pill-stack">${changePill}<div class="momentum-pill ${momColor}">${momEmoji} ${momLabel}</div></div>`;
 
   // Logo — favicon with initials fallback
   const logoHtml = `
@@ -339,6 +425,8 @@ function render(n) {
       ${momentumPill}
     </div>
     ${statsGrid}
+    ${spendRow(n.spend_estimate)}
+    ${trendSection(n.history)}
     ${themesSection}
     ${briefCard}
     ${actionRow}
@@ -471,6 +559,8 @@ async function analyze(domain) {
       clearStatus();
       const n = normalize(data.signals, data.domain);
       n.cache_age_days = data.cache_age_days;
+      n.history = data.history || [];
+      n.spend_estimate = data.spend_estimate || null;
       render(n);
       fetchRank(n);
 
@@ -481,6 +571,8 @@ async function analyze(domain) {
           setRefreshBadge(false);
           const updated = normalize(fresh.signals, data.domain);
           updated.cache_age_days = 0;
+          updated.history = data.history || [];
+          updated.spend_estimate = data.spend_estimate || null;
           render(updated);
           fetchRank(updated);
         });
@@ -492,6 +584,8 @@ async function analyze(domain) {
       enrichBackground(data.domain || domain, data.facebook_url, data.company_name, (fresh) => {
         const n = normalize(fresh.signals, data.domain || domain);
         n.cache_age_days = 0;
+        n.history = data.history || [];
+        n.spend_estimate = data.spend_estimate || null;
         render(n);
         fetchRank(n);
       });

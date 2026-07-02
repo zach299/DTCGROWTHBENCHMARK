@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
+import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
 
 // Chrome-extension entry point. Resolves a domain to its cached Growth Signals,
 // AND ensures every looked-up domain becomes a first-class company in the
@@ -60,9 +61,41 @@ export async function POST(request: Request) {
       fresh = cacheAgeDays <= CACHE_TTL_DAYS;
     }
 
+    // Growth history for the popup mini chart (one extra cheap query).
+    const { data: hist } = await supabase
+      .from('domain_snapshots')
+      .select('snapshot_date, growth_score, active_meta_ads')
+      .eq('domain', domain)
+      .order('snapshot_date', { ascending: true })
+      .limit(60);
+    const history = (hist ?? []).map((r) => ({
+      date: r.snapshot_date as string,
+      growth_score: r.growth_score != null ? Number(r.growth_score) : null,
+      active_meta_ads: r.active_meta_ads != null ? Number(r.active_meta_ads) : null,
+    }));
+
+    // Estimated monthly spend from the cached signal row.
+    let spendEstimate: SpendEstimate | null = null;
+    if (sig) {
+      const s = sig as Record<string, unknown>;
+      spendEstimate = estimateMonthlySpend({
+        metaAds: Number(s.active_meta_ads ?? 0),
+        googleAds: s.google_ads != null ? Number(s.google_ads) : null,
+        linkedinAds: s.linkedin_ads != null ? Number(s.linkedin_ads) : null,
+        qualityAdjustedAds: s.quality_adjusted_ads != null ? Number(s.quality_adjusted_ads) : null,
+        landingPages: Array.isArray(s.landing_pages) ? s.landing_pages.length : null,
+        creativeDiversityScore:
+          s.creative_diversity_score != null ? Number(s.creative_diversity_score) : null,
+        revenueRange: (s.estimated_revenue_range as string) ?? null,
+        paidIntensity: (s.ad_activity_level as string) ?? null,
+      });
+    }
+
     return NextResponse.json({
       domain,
       is_new: isNew,
+      history,
+      spend_estimate: spendEstimate,
       signals: sig ?? null,
       facebook_url: (seed.facebook_url as string) ?? null,
       company_name: (seed.company_name as string) ?? null,

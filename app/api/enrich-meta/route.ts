@@ -8,6 +8,7 @@ import { logger } from '@/lib/utils/logger';
 import { normalizeCategory } from '@/lib/categories';
 import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
 import { analyzeCreativeQuality } from '@/lib/creativeQuality';
+import { writeSnapshot } from '@/lib/trends';
 import { requireApiKey } from '@/lib/apiAuth';
 
 // Meta-only enrichment for the bulk dataset. No website crawl, no Google /
@@ -181,6 +182,22 @@ export async function POST(request: Request) {
         error: e instanceof Error ? e.message : String(e),
       });
     }
+
+    // Daily immutable snapshot — this is what powers growth-over-time charts.
+    // Every enrichment (bulk worker, extension, UI) compounds the history.
+    await writeSnapshot(supabase, domain, {
+      active_meta_ads: count,
+      active_google_ads: googleAds,
+      active_linkedin_ads: linkedinAds,
+      landing_pages_count: lpCount,
+      estimated_revenue: seedRevenue,
+      revenue_range: revenue.range,
+      growth_score: momentum.score,
+      growth_momentum: momentum.label,
+      paid_media_intensity: paidIntensity,
+      creative_velocity: velocityLabel(count),
+      campaign_diversity: diversityLabel(lpCount),
+    }, meta.raw);
 
     return NextResponse.json({ ok: true, signals });
   } catch (err) {

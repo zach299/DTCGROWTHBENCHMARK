@@ -121,3 +121,59 @@ body {
 /* Dividers in tables */
 .dark-app .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
 .dark-app .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: var(--d-line); }
+
+/* Loading skeletons read as a raised surface on dark */
+.dark-app .gs-skeleton,
+.dark-app .bg-gray-200 { background-color: var(--d-panel-2); }
+.gs-skeleton { background-color: #e5e7eb; }
+
+/* Refined typography — the app is data-dense; use the Geist stack */
+.dark-app {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sticky table headers keep an opaque panel over scrolling rows */
+.dark-app thead.sticky tr,
+.dark-app thead .bg-gray-50 { background-color: #10131a; }
+.dark-app thead th { border-bottom: 1px solid var(--d-line); }
+
+/* Subtle scrollbars on data tables */
+.dark-app ::-webkit-scrollbar { width: 10px; height: 10px; }
+.dark-app ::-webkit-scrollbar-thumb {
+  background: #2a2f3d;
+  border-radius: 8px;
+  border: 2px solid var(--d-bg);
+}
+.dark-app ::-webkit-scrollbar-track { background: transparent; }
+
+/* Focus rings that fit the dark accent palette */
+.dark-app :focus-visible { outline: 2px solid rgba(129, 140, 248, 0.55); outline-offset: 1px; }
+
+/* Buttons/selects get a slightly deeper hover on dark */
+.dark-app select { color-scheme: dark; }
+
+/* Chips with light rings stay legible */
+.dark-app .ring-green-200 { --tw-ring-color: rgba(74, 222, 128, 0.25); }
+.dark-app .ring-red-200 { --tw-ring-color: rgba(248, 113, 113, 0.25); }
+.dark-app .ring-indigo-200\/40 { --tw-ring-color: rgba(165, 180, 252, 0.2); }
+.dark-app .ring-gray-200 { --tw-ring-color: var(--d-line); }
+.dark-app .ring-blue-200 { --tw-ring-color: rgba(96, 165, 250, 0.25); }
+.dark-app .ring-emerald-200 { --tw-ring-color: rgba(52, 211, 153, 0.25); }
+.dark-app .ring-amber-200 { --tw-ring-color: rgba(251, 191, 36, 0.25); }
+.dark-app .bg-blue-50 { background-color: #16233c; }
+.dark-app .text-blue-700 { color: #93c5fd; }
+.dark-app .bg-emerald-50 { background-color: #0f2e26; }
+.dark-app .text-emerald-700 { color: #6ee7b7; }
+.dark-app .text-amber-700 { color: #fcd34d; }
+.dark-app .text-yellow-700 { color: #fde047; }
+.dark-app .text-yellow-600 { color: #facc15; }
+.dark-app .bg-green-100 { background-color: #123324; }
+.dark-app .bg-red-50 { background-color: #34161a; }
+.dark-app .border-red-200 { border-color: #7f1d1d; }
+.dark-app .border-green-200,
+.dark-app .border-indigo-300 { border-color: #3f435a; }
+.dark-app .hover\:bg-indigo-50:hover { background-color: #1e213a; }
+
+/* Tabular numerals everywhere data aligns in columns */
+.dark-app table { font-variant-numeric: tabular-nums; }
