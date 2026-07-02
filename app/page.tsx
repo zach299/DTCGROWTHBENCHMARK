@@ -1,6 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  BoltIcon,
+  TrendUpIcon,
+  SearchIcon,
+  BuildingIcon,
+  LayersIcon,
+  UploadIcon,
+  StarIcon,
+  BellIcon,
+  ChevronDownIcon,
+  ChevronUpDownIcon,
+  ExternalLinkIcon,
+  InfoIcon,
+  CheckIcon,
+  SparkleIcon,
+  CopyIcon,
+  BarsIcon,
+  MetaIcon,
+  GoogleIcon,
+  LinkedInIcon,
+} from '@/app/components/icons';
 import { buildResearchBrief, type ResearchBriefInput } from '@/lib/researchBrief';
 import { LENSES, getLens } from '@/lib/lenses';
 import type { Momentum } from '@/lib/intelligence';
@@ -195,6 +216,18 @@ function intensityLabel(signal: string): string {
   if (signal === 'low') return 'Low';
   return 'None';
 }
+function intensitySub(signal: string): string {
+  if (signal === 'high') return 'Aggressive paid strategy';
+  if (signal === 'medium') return 'Steady paid presence';
+  if (signal === 'low') return 'Light paid activity';
+  return 'No paid activity detected';
+}
+function momentumSub(m: string): string {
+  if (m === 'Exploding' || m === 'Accelerating') return 'Strong upward trajectory';
+  if (m === 'Scaling') return 'Consistent upward trend';
+  if (m === 'Emerging') return 'Early growth signals';
+  return 'Little recent activity';
+}
 function velocity(count: number): string {
   if (count >= 100) return 'High';
   if (count >= 25) return 'Medium';
@@ -217,38 +250,6 @@ function estSpend(salesYear: number): string {
   if (monthly < 1_000_000) return '$250K – $1M';
   if (monthly < 5_000_000) return '$1M – $5M';
   return '$5M+';
-}
-function narrativeTags(r: AnalysisResult): string[] {
-  const tags: string[] = [];
-  const mom = r.growth_momentum;
-  const score = r.growth_score ?? 0;
-  const ads = r.meta_ads?.active_ads_count ?? 0;
-  const q = r.paid_media_quality;
-
-  // Momentum tag
-  if (mom === 'Exploding' || mom === 'Accelerating') tags.push('High Growth');
-  else if (mom === 'Scaling') tags.push('Scaling');
-  else if (mom === 'Emerging') tags.push('Emerging');
-
-  // Ad quality signal
-  if (q) {
-    if (q.real_creative_score >= 65) tags.push('Strong Creative');
-    else if (q.dpa_share >= 0.5) tags.push('Catalog-Heavy');
-  } else if (ads >= 100) {
-    tags.push('High Ad Volume');
-  }
-
-  // Multi-channel
-  const google = (r.ad_platforms ?? []).find((p) => p.platform === 'Google' && p.status === 'active');
-  const linkedin = (r.ad_platforms ?? []).find((p) => p.platform === 'LinkedIn' && p.status === 'active');
-  if (google && linkedin) tags.push('Full-Channel');
-  else if (google || linkedin) tags.push('Multi-Channel');
-
-  // Revenue / score tier
-  if (score >= 80) tags.push('Top Tier');
-  else if (score >= 50 && !tags.includes('High Growth') && !tags.includes('Scaling')) tags.push('Mid-Market');
-
-  return tags.slice(0, 4);
 }
 function paidStatusBadge(status: string): string {
   if (status === 'active') return 'bg-green-100 text-green-700';
@@ -387,9 +388,9 @@ function SignalRow({ label, active, detail }: { label: string; active: boolean; 
   );
 }
 
-function Card({ title, action, children }: { title?: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Card({ title, action, children, className = '' }: { title?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className={`rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${className}`}>
       {(title || action) && (
         <div className="flex items-center justify-between mb-4">
           {title && <h3 className="text-sm font-semibold text-gray-900">{title}</h3>}
@@ -399,6 +400,60 @@ function Card({ title, action, children }: { title?: string; action?: React.Reac
       {children}
     </div>
   );
+}
+
+// Company logo tile — favicon via Google s2 with an initials fallback. Kept
+// deliberately light (near-white) per the report header design.
+function LogoTile({ domain, name }: { domain: string; name: string }) {
+  const [err, setErr] = useState(false);
+  const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  return (
+    <div
+      className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-lg ring-1 ring-white/10"
+      style={{ background: '#f4f5f7' }}
+    >
+      {err ? (
+        <span className="text-xl font-bold uppercase text-gray-600" style={{ color: '#4b5563' }}>
+          {name.slice(0, 2)}
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(clean)}&sz=128`}
+          alt={`${name} logo`}
+          width={44}
+          height={44}
+          referrerPolicy="no-referrer"
+          onError={() => setErr(true)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Key takeaways for the Growth Narrative card — derived strictly from real
+// signal data; each line only renders when its source field exists.
+function keyTakeaways(r: AnalysisResult): string[] {
+  const out: string[] = [];
+  const adTrend = r.trends?.active_meta_ads?.[1] ?? r.trends?.active_meta_ads?.[0];
+  if (adTrend && adTrend.change_pct != null && adTrend.previous != null) {
+    out.push(
+      `Active Meta ads ${adTrend.change_pct >= 0 ? 'up' : 'down'} ${Math.abs(adTrend.change_pct)}% (${adTrend.previous} → ${adTrend.current}) over ${adTrend.window_days} days.`
+    );
+  }
+  const q = r.paid_media_quality;
+  if (q && q.real_creative_score != null) {
+    out.push(
+      `Real creative score of ${q.real_creative_score} (${creativeLabel(q.real_creative_score)}) across ${q.unique_creative_count} unique creatives.`
+    );
+  }
+  if (q && q.campaign_angle_count > 0) {
+    out.push(`${q.campaign_angle_count} distinct campaign angles in active testing.`);
+  }
+  if (r.growth_momentum) {
+    out.push(`Growth momentum classified as ${r.growth_momentum}.`);
+  }
+  return out.slice(0, 4);
 }
 
 // Render inline **bold** segments within a line.
@@ -441,12 +496,12 @@ function ResearchBriefBody({ text }: { text: string }) {
   );
 }
 
-const NAV: { label: string; view: View }[] = [
-  { label: 'Top Movers', view: 'movers' },
-  { label: 'Search', view: 'search' },
-  { label: 'My Accounts', view: 'watchlist' },
-  { label: 'Bulk Enrichment', view: 'bulk' },
-  { label: 'Import Data', view: 'import' },
+const NAV: { label: string; view: View; icon: React.ComponentType<React.SVGProps<SVGSVGElement>> }[] = [
+  { label: 'Top Movers', view: 'movers', icon: TrendUpIcon },
+  { label: 'Search', view: 'search', icon: SearchIcon },
+  { label: 'My Accounts', view: 'watchlist', icon: BuildingIcon },
+  { label: 'Bulk Enrichment', view: 'bulk', icon: LayersIcon },
+  { label: 'Import Data', view: 'import', icon: UploadIcon },
 ];
 
 type View = 'search' | 'watchlist' | 'movers' | 'bulk' | 'import';
@@ -1057,6 +1112,29 @@ export default function Home() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedTo, setSavedTo] = useState<string | null>(null);
   const [lens, setLens] = useState('measurement');
+  const [workspaceOpen, setWorkspaceOpen] = useState(true);
+  const [wlCount, setWlCount] = useState<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Sidebar Watchlist badge — real count from the watchlist API.
+  useEffect(() => {
+    fetch('/api/watchlist')
+      .then((r) => r.json())
+      .then((d) => setWlCount(Array.isArray(d.items) ? d.items.length : null))
+      .catch(() => setWlCount(null));
+  }, []);
+
+  // Cmd/Ctrl+K focuses the global search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Brief + outreach angle regenerate instantly from the selected lens, with
   // no re-fetch (all data is already loaded).
@@ -1251,30 +1329,79 @@ export default function Home() {
   return (
     <div className="dark-app min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <aside className="hidden md:flex w-56 shrink-0 flex-col bg-gray-900 text-gray-300 px-4 py-6">
-        <div className="flex items-center gap-2 px-2 mb-8">
-          <div className="h-7 w-7 rounded-lg bg-indigo-500 flex items-center justify-center text-white font-bold">
-            ⚡
+      <aside className="hidden md:flex w-[215px] shrink-0 flex-col border-r border-gray-200 bg-gray-900 text-gray-300 px-3 py-5">
+        <div className="flex items-center gap-2.5 px-2 mb-7">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-900/40">
+            <BoltIcon width={16} height={16} />
           </div>
-          <span className="font-semibold text-white">Growth Signals</span>
+          <span className="text-[15px] font-bold tracking-tight text-white">Growth Signals</span>
         </div>
-        <nav className="space-y-1">
-          {NAV.map((item) => (
-            <button
-              key={item.label}
-              onClick={() => setView(item.view)}
-              className={`relative block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                view === item.view
-                  ? 'bg-indigo-500/10 font-medium text-white ring-1 ring-inset ring-indigo-500/30'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+        <nav className="space-y-0.5">
+          {NAV.map((item) => {
+            const Icon = item.icon;
+            const active = view === item.view;
+            return (
+              <button
+                key={item.label}
+                onClick={() => setView(item.view)}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                  active
+                    ? 'bg-indigo-500/10 font-medium text-white ring-1 ring-inset ring-indigo-500/30'
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                }`}
+              >
+                <Icon width={15} height={15} className={active ? 'text-indigo-300' : 'text-gray-500'} />
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
-        <div className="mt-auto pt-6 text-xs text-gray-500">
-          Growth Intelligence
+
+        <div className="my-4 border-t border-gray-200" />
+
+        <button
+          onClick={() => setWorkspaceOpen((o) => !o)}
+          className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500 hover:text-gray-300"
+        >
+          Workspace
+          <ChevronDownIcon
+            width={12}
+            height={12}
+            className={`transition-transform ${workspaceOpen ? '' : '-rotate-90'}`}
+          />
+        </button>
+        {workspaceOpen && (
+          <div className="mt-1 space-y-0.5">
+            <button
+              onClick={() => setView('watchlist')}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+            >
+              <StarIcon width={15} height={15} className="text-gray-500" />
+              <span className="flex-1">Watchlist</span>
+              {wlCount != null && wlCount > 0 && (
+                <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300 ring-1 ring-white/10">
+                  {wlCount}
+                </span>
+              )}
+            </button>
+            <div className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-gray-500 cursor-default">
+              <BellIcon width={15} height={15} className="text-gray-600" />
+              <span className="flex-1">Alerts</span>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-auto border-t border-gray-200 pt-3">
+          <button className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-gray-800">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] font-bold text-indigo-300 ring-1 ring-indigo-500/30">
+              GT
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-gray-200">Growth Team</span>
+              <span className="block truncate text-[11px] text-gray-500">Workspace</span>
+            </span>
+            <ChevronUpDownIcon width={13} height={13} className="text-gray-500" />
+          </button>
         </div>
       </aside>
 
@@ -1282,24 +1409,23 @@ export default function Home() {
       <main className="flex-1 min-w-0">
         {/* Top bar */}
         <div className="border-b border-gray-200 bg-white px-6 py-3 sticky top-0 z-10">
-          <form onSubmit={analyze} className="flex items-center gap-3 max-w-2xl">
-            <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+          <form onSubmit={analyze}>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                <SearchIcon width={15} height={15} />
+              </span>
               <input
+                ref={searchRef}
                 type="text"
                 value={domain}
                 onChange={(e) => setDomain(e.target.value)}
-                placeholder="ridge.com"
-                className="w-full rounded-lg border border-gray-300 bg-gray-50 pl-9 pr-4 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                placeholder="Search any company or domain..."
+                className="w-full rounded-xl border border-gray-300 bg-gray-50 pl-10 pr-16 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-gray-200 bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-400">
+                ⌘K
+              </span>
             </div>
-            <button
-              type="submit"
-              disabled={loading || !domain.trim()}
-              className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {loading ? 'Analyzing…' : 'Analyze'}
-            </button>
           </form>
         </div>
 
@@ -1343,54 +1469,63 @@ export default function Home() {
           {result && (
             <div className="space-y-6">
               {/* Brand header */}
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-lg font-bold uppercase text-white shadow-lg shadow-indigo-900/30 ring-1 ring-white/10">
-                    {brandName.slice(0, 2)}
-                  </div>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <LogoTile domain={result.domain} name={brandName} />
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h1 className="text-2xl font-bold tracking-tight text-gray-900 capitalize">{brandName}</h1>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h1 className="text-[28px] leading-tight font-bold tracking-tight text-gray-900 capitalize">{brandName}</h1>
                       {enriching ? (
-                        <span className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-medium text-indigo-600">
+                        <span className="flex items-center gap-1.5 text-[12px] font-medium text-indigo-400">
                           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
                           Refreshing in background…
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-500">
+                        <span className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500">
                           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                           Updated {result.cache_age_days != null ? relativeTime(new Date(Date.now() - result.cache_age_days * 86_400_000).toISOString()) : 'just now'}
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500">
                       <a
                         href={`https://${result.domain.replace(/^https?:\/\//, '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:text-indigo-400 hover:underline"
+                        className="inline-flex items-center gap-1 hover:text-indigo-400 hover:underline"
                       >
                         {result.domain}
+                        <ExternalLinkIcon width={12} height={12} />
                       </a>
                       {(result.primary_category || cstr(result.company, 'categories')) && (
-                        <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-                          {result.primary_category || cstr(result.company, 'categories')?.replace(/^\//, '').split('/')[0]}
-                        </span>
+                        <>
+                          <span className="text-gray-600">•</span>
+                          <span className="text-[13px]">
+                            {result.primary_category || cstr(result.company, 'categories')?.replace(/^\//, '').split('/')[0]}
+                          </span>
+                        </>
                       )}
                       {cstr(result.company, 'platform') && (
-                        <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200">
+                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 ring-1 ring-green-200">
                           {cstr(result.company, 'platform')}
                         </span>
                       )}
                     </div>
                     {rankInfo?.rank && (
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-white">
-                        <span className="text-sm font-bold">⚡ Growth Rank #{rankInfo.rank.toLocaleString()}</span>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1 text-[12px] font-bold text-white">
+                          <BoltIcon width={12} height={12} />
+                          Growth Rank #{rankInfo.rank.toLocaleString()}
+                        </span>
                         {rankInfo.percentile_top != null && (
-                          <span className="rounded bg-white/20 px-1.5 py-0.5 text-[11px] font-semibold">Top {rankInfo.percentile_top}%</span>
+                          <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[11px] font-semibold text-gray-300 ring-1 ring-white/10">
+                            Top {rankInfo.percentile_top}%
+                          </span>
                         )}
                         {rankInfo.category_rank != null && rankInfo.primary_category && (
-                          <span className="text-[11px] text-indigo-100">#{rankInfo.category_rank} in {rankInfo.primary_category}</span>
+                          <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[11px] font-semibold text-gray-300 ring-1 ring-white/10">
+                            #{rankInfo.category_rank} in {rankInfo.primary_category}
+                          </span>
                         )}
                       </div>
                     )}
@@ -1403,14 +1538,14 @@ export default function Home() {
                     rel="noopener noreferrer"
                     className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
-                    ↗ Visit Website
+                    Visit Website
                   </a>
                   <div className="relative">
                     <button
                       onClick={() => setSaveOpen((s) => !s)}
                       className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
-                      {savedTo ? `✓ Saved to ${savedTo}` : '☆ Save Company'}
+                      {savedTo ? `✓ Saved to ${savedTo}` : 'Save Company'}
                     </button>
                     {saveOpen && (
                       <div className="absolute right-0 mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg z-20 py-1">
@@ -1432,7 +1567,14 @@ export default function Home() {
                       copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                     }`}
                   >
-                    {copied ? '✓ Copied' : '✦ Research Brief'}
+                    {copied ? (
+                      '✓ Copied'
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5">
+                        <SparkleIcon width={13} height={13} />
+                        Research Brief
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -1441,10 +1583,21 @@ export default function Home() {
               <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:grid-cols-3 xl:grid-cols-6 divide-x divide-y divide-gray-100 xl:divide-y-0">
                 <MetricCard
                   label="Growth Rank"
+                  icon={<BoltIcon width={11} height={11} className="text-indigo-400" />}
                   sub={
                     hasAnalysis && rankInfo?.rank
                       ? `Score ${gScore} · of ${rankInfo.total.toLocaleString()} tracked`
                       : undefined
+                  }
+                  footer={
+                    hasAnalysis && rankInfo?.percentile_top != null ? (
+                      <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/[0.04]">
+                        <div
+                          className="h-full bg-indigo-500"
+                          style={{ width: `${Math.max(3, 100 - rankInfo.percentile_top)}%` }}
+                        />
+                      </div>
+                    ) : undefined
                   }
                 >
                   {!hasAnalysis ? (
@@ -1467,7 +1620,11 @@ export default function Home() {
                     </div>
                   )}
                 </MetricCard>
-                <MetricCard label="Paid Media Intensity">
+                <MetricCard
+                  label="Paid Media Intensity"
+                  icon={<BarsIcon width={11} height={11} className="text-violet-400" />}
+                  sub={hasAnalysis ? intensitySub(result.paid_media_signal ?? '') : undefined}
+                >
                   {hasAnalysis ? (
                     <div className="text-xl font-bold text-gray-900">
                       {intensityLabel(result.paid_media_signal ?? '')}
@@ -1478,6 +1635,7 @@ export default function Home() {
                 </MetricCard>
                 <MetricCard
                   label="Est. Revenue"
+                  icon={<span className="text-[11px] font-bold text-emerald-400 leading-none">$</span>}
                   sub={
                     result.revenue_confidence ? (
                       <span
@@ -1494,10 +1652,10 @@ export default function Home() {
                 </MetricCard>
                 <MetricCard
                   label="Active Meta Ads"
+                  icon={<MetaIcon width={12} height={12} className="text-blue-400" />}
                   sub={
-                    result.paid_media_quality &&
-                    result.paid_media_quality.quality_adjusted_ads < metaCount * 0.7
-                      ? `~${result.paid_media_quality.quality_adjusted_ads} effective`
+                    result.paid_media_quality
+                      ? `~${result.paid_media_quality.quality_adjusted_ads} effective creatives`
                       : undefined
                   }
                 >
@@ -1507,14 +1665,38 @@ export default function Home() {
                     <Skeleton className="h-8 w-12" />
                   )}
                 </MetricCard>
-                <MetricCard label="Est. Monthly Ad Spend" sub={spendEst ? SPEND_HELPER : undefined}>
+                <MetricCard
+                  label="Est. Monthly Ad Spend"
+                  icon={<span className="text-[11px] font-bold text-amber-400 leading-none">$</span>}
+                  sub={
+                    spendEst ? (
+                      <>
+                        <span className="inline-flex items-center gap-1 capitalize text-gray-400">
+                          {spendEst.confidence} confidence
+                          <InfoIcon width={11} height={11} />
+                        </span>
+                        <span className="mt-0.5 block text-[10px] leading-tight text-gray-500">
+                          {SPEND_HELPER}
+                        </span>
+                      </>
+                    ) : undefined
+                  }
+                >
                   {hasAnalysis || result.meta_ads ? (
-                    <SpendEstimateBadge estimate={spendEst} />
+                    spendEst ? (
+                      <div className="text-xl font-bold text-gray-900 tabular-nums">{spendEst.label}</div>
+                    ) : (
+                      <SpendEstimateBadge estimate={spendEst} />
+                    )
                   ) : (
                     <Skeleton className="h-7 w-24" />
                   )}
                 </MetricCard>
-                <MetricCard label="Growth Momentum">
+                <MetricCard
+                  label="Growth Momentum"
+                  icon={<TrendUpIcon width={11} height={11} className="text-green-400" />}
+                  sub={result.growth_momentum ? momentumSub(result.growth_momentum) : undefined}
+                >
                   {result.growth_momentum ? (
                     <div className={`text-lg font-bold ${momentumColor(result.growth_momentum)}`}>
                       {result.growth_momentum} {MOMENTUM_EMOJI[result.growth_momentum] ?? ''}
@@ -1528,92 +1710,174 @@ export default function Home() {
               {/* Growth Over Time — snapshot history chart */}
               {result.history != null && <GrowthOverTime history={result.history} />}
 
-              {/* Category & Channel Benchmarks */}
-              {rankInfo && (rankInfo.category_rank != null || (rankInfo.channels?.some((c) => c.ads > 0))) && (
-                <Card title="Benchmarks">
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    {/* Ranks */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500">Overall Growth Rank</span>
-                        <span className="font-semibold text-gray-900">
-                          #{rankInfo.rank} of {rankInfo.total.toLocaleString()}
-                          {rankInfo.percentile_top != null && (
-                            <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">Top {rankInfo.percentile_top}%</span>
-                          )}
+              {/* Bottom 3-column grid: Benchmarks · Paid Media Quality · Growth Narrative */}
+              {(rankInfo?.rank != null || result.paid_media_quality || result.growth_narrative) && (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 items-stretch">
+                  {/* Benchmarks */}
+                  {rankInfo?.rank != null && (
+                    <Card
+                      title={
+                        <span className="inline-flex items-center gap-1.5">
+                          <BarsIcon width={13} height={13} className="text-indigo-400" />
+                          Benchmarks
                         </span>
-                      </div>
-                      {rankInfo.category_rank != null && rankInfo.primary_category && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-500">{rankInfo.primary_category} Rank</span>
-                          <span className="font-semibold text-gray-900">
-                            #{rankInfo.category_rank} of {rankInfo.category_total?.toLocaleString()}
-                            {rankInfo.category_percentile_top != null && (
-                              <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">Top {rankInfo.category_percentile_top}%</span>
+                      }
+                    >
+                      <div className="divide-y divide-gray-100">
+                        <div className="flex items-center justify-between gap-2 py-2.5 first:pt-0">
+                          <span className="text-[13px] text-gray-500">Overall Growth Rank</span>
+                          <span className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+                            #{rankInfo.rank} of {rankInfo.total.toLocaleString()}
+                            {rankInfo.percentile_top != null && (
+                              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                Top {rankInfo.percentile_top}%
+                              </span>
                             )}
                           </span>
                         </div>
-                      )}
-                    </div>
-                    {/* Channels */}
-                    <div className="space-y-2">
-                      {(rankInfo.channels ?? []).map((c) => (
-                        <div key={c.channel} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-500">{c.channel}</span>
-                          <span className="text-right">
-                            <span className="font-semibold text-gray-900">{c.ads} ads</span>
-                            <span className={`ml-2 text-[11px] font-semibold ${c.overall_label.startsWith('Top') ? 'text-green-600' : 'text-gray-400'}`}>
-                              {c.overall_label}{rankInfo.primary_category && c.ads > 0 ? ` · ${c.category_label} in ${rankInfo.primary_category}` : ''}
+                        {rankInfo.category_rank != null && rankInfo.primary_category && (
+                          <div className="flex items-center justify-between gap-2 py-2.5">
+                            <span className="text-[13px] text-gray-500">{rankInfo.primary_category} Rank</span>
+                            <span className="flex items-center gap-2 text-[13px] font-semibold text-gray-900">
+                              #{rankInfo.category_rank} of {rankInfo.category_total?.toLocaleString()}
+                              {rankInfo.category_percentile_top != null && (
+                                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                  Top {rankInfo.category_percentile_top}%
+                                </span>
+                              )}
                             </span>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-              )}
+                          </div>
+                        )}
+                        {(rankInfo.channels ?? []).map((c) => {
+                          const Icon =
+                            c.channel === 'Meta' ? MetaIcon : c.channel === 'Google' ? GoogleIcon : c.channel === 'LinkedIn' ? LinkedInIcon : BarsIcon;
+                          return (
+                            <div key={c.channel} className="flex items-center justify-between gap-2 py-2.5 last:pb-0">
+                              <span className="inline-flex items-center gap-2 text-[13px] text-gray-500">
+                                <Icon width={14} height={14} className="text-gray-400" />
+                                {c.channel}
+                              </span>
+                              <span className="flex flex-wrap items-center justify-end gap-1.5 text-[13px] font-semibold text-gray-900">
+                                {c.ads} ads
+                                {c.ads > 0 ? (
+                                  <>
+                                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                      {c.overall_label}
+                                    </span>
+                                    {rankInfo.primary_category && (
+                                      <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] font-semibold text-gray-400 ring-1 ring-white/10">
+                                        {c.category_label} in {rankInfo.primary_category}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-[11px] font-medium text-gray-500">No data</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  )}
 
-              {/* Paid Media Quality — real creative vs. catalog/DPA volume */}
-              {result.paid_media_quality && result.paid_media_quality.real_creative_score != null && (() => {
-                const q = result.paid_media_quality!;
-                const dpaPct = Math.round((q.dpa_share ?? 0) * 100);
-                const callout =
-                  dpaPct >= 50
-                    ? 'High ad count appears primarily catalog / DPA-driven, so paid media intensity is adjusted downward to reflect real creative output.'
-                    : q.real_creative_score >= 55
-                      ? 'Ad activity appears driven by unique campaign creative rather than product-feed ads — a strong, active testing motion.'
-                      : 'A mix of campaign creative and catalog ads, with moderate creative testing.';
-                const scoreTone = q.real_creative_score >= 55 ? 'text-green-600' : q.real_creative_score >= 35 ? 'text-yellow-600' : 'text-gray-500';
-                return (
-                  <Card title="Paid Media Quality">
-                    <div className="flex flex-wrap items-center gap-6">
-                      <div className="min-w-[140px]">
-                        <div className={`text-4xl font-bold ${scoreTone}`}>{q.real_creative_score}</div>
-                        <div className="text-xs text-gray-500">Real Creative Score · {creativeLabel(q.real_creative_score)}</div>
+                  {/* Paid Media Quality */}
+                  {result.paid_media_quality && result.paid_media_quality.real_creative_score != null && (() => {
+                    const q = result.paid_media_quality!;
+                    const dpaPct = Math.round((q.dpa_share ?? 0) * 100);
+                    const callout =
+                      dpaPct >= 50
+                        ? 'High ad count appears primarily catalog / DPA-driven, so paid media intensity is adjusted downward to reflect real creative output.'
+                        : q.real_creative_score >= 55
+                          ? 'Ad activity appears driven by unique campaign creative rather than product-feed ads — a strong, active testing motion.'
+                          : 'A mix of campaign creative and catalog ads, with moderate creative testing.';
+                    return (
+                      <Card
+                        title={
+                          <span className="inline-flex items-center gap-1.5">
+                            <SparkleIcon width={13} height={13} className="text-indigo-400" />
+                            Paid Media Quality
+                          </span>
+                        }
+                      >
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <div className="text-3xl font-bold text-indigo-400 tabular-nums">{q.real_creative_score}</div>
+                            <div className="mt-0.5 text-[11px] leading-tight text-gray-500">
+                              Real Creative Score
+                              <span className="block font-semibold text-gray-400">{creativeLabel(q.real_creative_score)}</span>
+                            </div>
+                          </div>
+                          <QStat label="Unique Angles" value={q.campaign_angle_count} />
+                          <QStat label="Unique Creatives" value={q.unique_creative_count} />
+                        </div>
+                        <div className="mt-4 grid grid-cols-3 gap-3">
+                          <QStat label="Offer Diversity" value={q.offer_diversity} />
+                          <QStat label="LP Diversity" value={q.landing_page_diversity} />
+                          <div>
+                            <div className="text-xl font-bold text-gray-900 tabular-nums">{dpaPct}%</div>
+                            <div className="text-[11px] text-gray-500 leading-tight">DPA / Catalog Share</div>
+                            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                              <div
+                                className={`h-full ${dpaPct >= 50 ? 'bg-red-400' : dpaPct >= 25 ? 'bg-yellow-400' : 'bg-green-400'}`}
+                                style={{ width: `${Math.max(3, dpaPct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <p className="mt-4 border-t border-gray-100 pt-3 text-[12px] leading-relaxed text-gray-500">{callout}</p>
+                      </Card>
+                    );
+                  })()}
+
+                  {/* Growth Narrative */}
+                  {result.growth_narrative && (
+                    <Card
+                      title={
+                        <span className="inline-flex items-center gap-1.5">
+                          <SparkleIcon width={13} height={13} className="text-indigo-400" />
+                          Growth Narrative
+                        </span>
+                      }
+                      action={
+                        <button
+                          onClick={copyBrief}
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          <CopyIcon width={11} height={11} />
+                          {copied ? 'Copied' : 'Copy'}
+                        </button>
+                      }
+                    >
+                      <div className="rounded-xl bg-indigo-500/[0.07] p-4 ring-1 ring-indigo-500/20">
+                        <span className="mb-2 inline-block rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-indigo-300">
+                          AI
+                        </span>
+                        <p className="text-[13px] leading-relaxed text-gray-800">{result.growth_narrative}</p>
                       </div>
-                      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4 min-w-[260px]">
-                        <QStat label="Unique Angles" value={q.campaign_angle_count} />
-                        <QStat label="Unique Creatives" value={q.unique_creative_count} />
-                        <QStat label="Offer Diversity" value={q.offer_diversity} />
-                        <QStat label="LP Diversity" value={q.landing_page_diversity} />
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                        <span>DPA / Catalog Share</span>
-                        <span className={`font-semibold ${dpaPct >= 50 ? 'text-red-500' : dpaPct >= 25 ? 'text-yellow-600' : 'text-green-600'}`}>{dpaPct}%</span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-                        <div
-                          className={`h-full ${dpaPct >= 50 ? 'bg-red-400' : dpaPct >= 25 ? 'bg-yellow-400' : 'bg-green-400'}`}
-                          style={{ width: `${Math.max(2, dpaPct)}%` }}
-                        />
-                      </div>
-                    </div>
-                    <p className="mt-4 text-sm text-gray-600 leading-relaxed">{callout}</p>
-                  </Card>
-                );
-              })()}
+                      {keyTakeaways(result).length > 0 && (
+                        <div className="mt-4">
+                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Key takeaways
+                          </div>
+                          <ul className="space-y-1.5">
+                            {keyTakeaways(result).map((t, i) => (
+                              <li key={i} className="flex items-start gap-2 text-[12px] leading-snug text-gray-700">
+                                <CheckIcon width={13} height={13} className="mt-0.5 shrink-0 text-green-500" />
+                                {t}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <p className="mt-4 flex items-center gap-1 border-t border-gray-100 pt-3 text-[10px] text-gray-500">
+                        AI-generated research · Not financial advice
+                        <InfoIcon width={10} height={10} />
+                      </p>
+                    </Card>
+                  )}
+                </div>
+              )}
 
               {/* Growth Trends */}
               {result.trends && (
@@ -1716,42 +1980,6 @@ export default function Home() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* LEFT (2 cols) */}
                 <div className="lg:col-span-2 space-y-6">
-                  {/* Growth Narrative */}
-                  {result.growth_narrative && (
-                    <Card
-                      title="✦ Growth Narrative"
-                      action={
-                        <button
-                          onClick={copyBrief}
-                          className="text-xs text-gray-500 hover:text-gray-700 rounded-md border border-gray-200 px-2.5 py-1"
-                        >
-                          {copied ? '✓ Copied' : '⧉ Copy'}
-                        </button>
-                      }
-                    >
-                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                        <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-indigo-400">
-                          Analyst Summary
-                        </div>
-                        <div className="border-l-2 border-indigo-500/60 pl-4">
-                          <p className="text-[15px] leading-relaxed text-gray-800">
-                            {result.growth_narrative}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        {narrativeTags(result).map((t) => (
-                          <span
-                            key={t}
-                            className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-200/40"
-                          >
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    </Card>
-                  )}
-
                   {/* Research Brief */}
                   {displayedBrief ? (
                     <Card

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import GrowthLineChart from './GrowthLineChart';
 import TrendPill from './TrendPill';
+import { ClockIcon, InfoIcon } from './icons';
 
 export interface SnapshotRow {
   snapshot_date: string;
@@ -23,7 +24,7 @@ function pct(curr: number, prev: number): number {
 
 function relDays(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days <= 0) return 'today';
+  if (days <= 0) return 'just now';
   if (days === 1) return 'yesterday';
   return `${days}d ago`;
 }
@@ -70,11 +71,22 @@ export default function GrowthOverTime({ history }: { history: SnapshotRow[] }) 
     }
   }
 
+  const metricLabel = metric === 'growth_score' ? 'Growth Score' : 'Active Meta Ads';
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900">Growth Over Time</h3>
-        <div className="flex rounded-lg border border-gray-200 p-0.5 text-[11px] font-medium">
+      {/* Header: title + info left, segmented toggle right */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+          Growth Over Time
+          <span
+            className="text-gray-400"
+            title="Snapshots are recorded each time this domain is analyzed."
+          >
+            <InfoIcon width={13} height={13} />
+          </span>
+        </h3>
+        <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-[11px] font-medium">
           {(
             [
               ['active_meta_ads', 'Active Meta Ads'],
@@ -104,26 +116,50 @@ export default function GrowthOverTime({ history }: { history: SnapshotRow[] }) 
         </div>
       ) : (
         <>
-          <GrowthLineChart
-            points={points}
-            valueLabel={metric === 'growth_score' ? 'Growth Score' : 'Active Meta Ads'}
-          />
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          {/* Pill row */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
             {changeSinceLast != null && (
               <TrendPill changePct={changeSinceLast} suffix="since last tracked" />
             )}
             {adsDelta != null && adsDelta !== 0 && (
-              <TrendPill
-                changePct={adsDelta}
-                label={`${adsDelta > 0 ? '+' : ''}${adsDelta} active ads`}
-              />
-            )}
-            {mom != null && <TrendPill changePct={mom} label={`MoM: ${mom > 0 ? '+' : ''}${mom}%`} />}
-            {last && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-gray-400 ring-1 ring-white/10">
-                Last tracked: {relDays(last.date)}
+              <span className="inline-flex items-center rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-gray-300 ring-1 ring-white/10">
+                {adsDelta > 0 ? '+' : ''}
+                {adsDelta} active ads
               </span>
             )}
+            {mom != null && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-gray-400 ring-1 ring-white/10">
+                MoM growth
+                <span className={mom >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                  {mom > 0 ? '+' : ''}
+                  {mom}%
+                </span>
+              </span>
+            )}
+            {last && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-gray-400 ring-1 ring-white/10">
+                <ClockIcon width={12} height={12} />
+                Last tracked {relDays(last.date)}
+              </span>
+            )}
+          </div>
+
+          {/* Body: big current value left, chart right */}
+          <div className="flex flex-col gap-6 sm:flex-row">
+            {last && (
+              <div className="w-full shrink-0 sm:w-[200px]">
+                <div className="text-5xl font-bold tracking-tight text-gray-900 tabular-nums">
+                  {last.value.toLocaleString()}
+                </div>
+                <div className="mt-1 text-sm font-medium text-gray-500">{metricLabel}</div>
+                <p className="mt-3 text-[11px] leading-relaxed text-gray-400">
+                  Tracking history builds with each snapshot.
+                </p>
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <GrowthLineChart points={points} valueLabel={metricLabel} />
+            </div>
           </div>
         </>
       )}

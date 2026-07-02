@@ -134,17 +134,42 @@ export default function GrowthLineChart({
         {points.length === 2 && (
           <line x1={xy[0].x} y1={xy[0].y} x2={xy[1].x} y2={xy[1].y} stroke={color} strokeWidth="2" strokeDasharray="4 4" strokeLinecap="round" />
         )}
+        {/* Last point highlight: vertical dashed guide */}
+        <line
+          x1={xy[xy.length - 1].x}
+          x2={xy[xy.length - 1].x}
+          y1={PAD.t}
+          y2={PAD.t + ih}
+          stroke={color}
+          strokeOpacity="0.45"
+          strokeDasharray="3 4"
+        />
         {xy.map((p, i) => (
           <circle
             key={i}
             cx={p.x}
             cy={p.y}
             r={hover === i ? 5 : points.length <= 12 ? 3.5 : 2.5}
-            fill={hover === i ? color : '#14171f'}
+            fill={hover === i ? color : '#101218'}
             stroke={color}
             strokeWidth="2"
           />
         ))}
+        {/* Value labels above dots (only when uncluttered) */}
+        {points.length <= 12 &&
+          xy.map((p, i) => (
+            <text
+              key={`v${i}`}
+              x={Math.min(W - PAD.r, Math.max(PAD.l, p.x))}
+              y={Math.max(10, p.y - 9)}
+              textAnchor="middle"
+              fontSize={i === xy.length - 1 ? 11 : 10}
+              fontWeight={i === xy.length - 1 ? 700 : 500}
+              className={i === xy.length - 1 ? 'fill-gray-100' : 'fill-gray-500'}
+            >
+              {formatValue(points[i].value)}
+            </text>
+          ))}
         {/* x labels: first, last, and a middle one when room */}
         {[0, points.length >= 5 ? Math.floor(points.length / 2) : -1, points.length - 1]
           .filter((i) => i >= 0)

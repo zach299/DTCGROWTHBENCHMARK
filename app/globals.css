@@ -52,10 +52,10 @@ body {
    the descendant selector keeps specificity ahead of the base utility.
    ========================================================================= */
 .dark-app {
-  --d-bg: #0a0c11;        /* app background */
-  --d-panel: #14171f;     /* cards / panels */
-  --d-panel-2: #1a1e28;   /* hover / nested */
-  --d-line: #232733;      /* borders */
+  --d-bg: #0a0b10;        /* app background */
+  --d-panel: #101218;     /* cards / panels */
+  --d-panel-2: #171a24;   /* hover / nested */
+  --d-line: #1e2130;      /* borders */
   --d-ink: #e6e9ef;       /* primary text */
   --d-muted: #8b93a7;     /* secondary text */
   --d-faint: #5b6373;     /* tertiary text */
