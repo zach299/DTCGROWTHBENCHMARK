@@ -167,7 +167,7 @@ async function fetchNextBatch(size) {
   for (let offset = 0; offset < MAX_SCAN && targets.length < size; offset += PAGE) {
     const { data: candidates, error } = await supabase
       .from('master_database')
-      .select('domain, company_name, facebook_url, sales_numeric')
+      .select('domain, facebook_url, sales_numeric')
       .ilike('platform', '%shopify%')
       .order('sales_numeric', { ascending: false, nullsFirst: false })
       .range(offset, offset + PAGE - 1);

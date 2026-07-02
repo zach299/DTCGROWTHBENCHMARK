@@ -200,7 +200,7 @@ export async function GET(request: Request) {
   // Inner join against master_database so we only process real brands.
   const { data: targets, error } = await supabase
     .from('master_database')
-    .select('domain, company_name, facebook_url')
+    .select('domain, facebook_url')
     .ilike('platform', '%shopify%')
     .order('sales_numeric', { ascending: false, nullsFirst: false })
     .limit(BATCH * 20); // over-select to account for recently-enriched rows
@@ -223,7 +223,7 @@ export async function GET(request: Request) {
     .gte('last_enriched_at', cutoff);
 
   const skip = new Set((recent ?? []).map((r) => r.domain as string));
-  const batch = (targets as { domain: string; company_name: string | null; facebook_url: string | null }[])
+  const batch = (targets as { domain: string; facebook_url: string | null }[])
     .filter((r) => !skip.has(r.domain))
     .slice(0, BATCH);
 
@@ -234,7 +234,7 @@ export async function GET(request: Request) {
   // Enrich in parallel — each Apify call is I/O bound so parallel is fine.
   const results = await Promise.allSettled(
     batch.map((t) =>
-      enrichDomain(supabase, normalizeDomain(t.domain), t.facebook_url, t.company_name),
+      enrichDomain(supabase, normalizeDomain(t.domain), t.facebook_url, null),
     ),
   );
 
