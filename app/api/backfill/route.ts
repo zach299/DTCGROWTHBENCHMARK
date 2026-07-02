@@ -5,6 +5,7 @@ import { normalizeCategory } from '@/lib/categories';
 import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
 import { analyzeCreativeQuality } from '@/lib/creativeQuality';
 import { logger } from '@/lib/utils/logger';
+import { requireApiKey } from '@/lib/apiAuth';
 
 // One-time (idempotent) backfill: recompute the Phase 8 derived intelligence
 // (category, growth score/momentum, modeled revenue, spend band) for companies
@@ -24,6 +25,9 @@ function parseNum(v: unknown): number {
 }
 
 export async function POST(request: Request) {
+  const denied = requireApiKey(request);
+  if (denied) return denied;
+
   let cursor = 0;
   let force = false;
   try {

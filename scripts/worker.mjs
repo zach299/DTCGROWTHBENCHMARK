@@ -106,7 +106,10 @@ async function enrichOne(row) {
     try {
       const res = await fetch(`${API_BASE}/api/enrich-meta`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.INTERNAL_API_KEY ? { 'x-api-key': process.env.INTERNAL_API_KEY } : {}),
+        },
         body: JSON.stringify({
           domain: row.domain,
           facebook_url: row.facebook_url ?? null,
@@ -154,27 +157,44 @@ async function enrichOne(row) {
 async function fetchNextBatch(size) {
   const cutoff = new Date(Date.now() - SKIP_DAYS * 86_400_000).toISOString();
 
-  // Fetch from master_database ordered by sales rank
-  const { data: candidates, error } = await supabase
-    .from('master_database')
-    .select('domain, company_name, facebook_url, sales_numeric')
-    .ilike('platform', '%shopify%')
-    .order('sales_numeric', { ascending: false, nullsFirst: false })
-    .limit(size * 8); // over-fetch to account for recently-enriched
+  // Page down the sales-ranked list until we've collected `size` domains that
+  // aren't fresh. The top of the list is mostly already enriched, so a single
+  // fixed-size fetch would find nothing once the head is covered — keep paging.
+  const targets = [];
+  const PAGE = 1000;
+  const MAX_SCAN = 60000; // don't scan past the top-N cohort we care about
 
-  if (error) { log(`DB error fetching candidates: ${error.message}`); return []; }
-  if (!candidates?.length) return [];
+  for (let offset = 0; offset < MAX_SCAN && targets.length < size; offset += PAGE) {
+    const { data: candidates, error } = await supabase
+      .from('master_database')
+      .select('domain, company_name, facebook_url, sales_numeric')
+      .ilike('platform', '%shopify%')
+      .order('sales_numeric', { ascending: false, nullsFirst: false })
+      .range(offset, offset + PAGE - 1);
 
-  // Filter out recently enriched
-  const domainList = candidates.map((r) => r.domain);
-  const { data: recent } = await supabase
-    .from('company_meta_signals')
-    .select('domain')
-    .in('domain', domainList)
-    .gte('last_enriched_at', cutoff);
+    if (error) { log(`DB error fetching candidates: ${error.message}`); break; }
+    if (!candidates?.length) break; // end of table
 
-  const skip = new Set((recent ?? []).map((r) => r.domain));
-  return candidates.filter((r) => !skip.has(r.domain)).slice(0, size);
+    // Filter out recently enriched (chunk the IN() list to stay under limits)
+    const skip = new Set();
+    for (let i = 0; i < candidates.length; i += 500) {
+      const chunk = candidates.slice(i, i + 500).map((r) => r.domain);
+      const { data: recent } = await supabase
+        .from('company_meta_signals')
+        .select('domain')
+        .in('domain', chunk)
+        .gte('last_enriched_at', cutoff);
+      for (const r of recent ?? []) skip.add(r.domain);
+    }
+
+    for (const c of candidates) {
+      if (!skip.has(c.domain)) targets.push(c);
+      if (targets.length >= size) break;
+    }
+    if (targets.length < size) log(`  scanned ${offset + candidates.length} ranked domains, found ${targets.length} stale so far…`);
+  }
+
+  return targets;
 }
 
 // ── progress stats from DB ───────────────────────────────────────────────────

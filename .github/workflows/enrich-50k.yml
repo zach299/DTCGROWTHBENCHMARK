@@ -2,24 +2,29 @@ name: Enrich Top 50k Brands
 
 on:
   schedule:
-    # Runs every 20 minutes. Each run processes ~100 domains at concurrency 5
-    # (~10 minutes of work). 3 runs/hour × 100 = 300/hr = 7,200/day.
-    # 50k target completes in ~7 days.
+    # Requested every 20 min; GitHub throttles scheduled runs on busy runners,
+    # so in practice this fires roughly every 1-2 hours. Each run processes
+    # up to 200 domains at concurrency 6 (~20 min). ~12 runs/day × 200 =
+    # ~2,400/day → the top-50k cohort stays refreshed on a ~21-day cycle.
     - cron: '*/20 * * * *'
   workflow_dispatch:
     inputs:
       batch:
-        description: 'Domains per run'
-        default: '100'
+        description: 'Domains per batch fetch'
+        default: '200'
       max_total:
         description: 'Max total to enrich this run'
-        default: '100'
+        default: '200'
+
+concurrency:
+  group: enrich-50k
+  cancel-in-progress: false
 
 jobs:
   enrich:
     name: Enrich batch
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -37,10 +42,11 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GROWTH_SIGNALS_API_BASE: ${{ secrets.GROWTH_SIGNALS_API_BASE }}
-          CONCURRENCY: '5'
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          CONCURRENCY: '6'
           SKIP_DAYS: '30'
           MAX_RETRIES: '2'
         run: |
-          BATCH=${{ github.event.inputs.batch || '100' }}
-          MAX=${{ github.event.inputs.max_total || '100' }}
+          BATCH=${{ github.event.inputs.batch || '200' }}
+          MAX=${{ github.event.inputs.max_total || '200' }}
           node scripts/worker.mjs $BATCH $MAX

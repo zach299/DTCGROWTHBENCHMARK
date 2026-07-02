@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
+import { requireApiKey } from '@/lib/apiAuth';
 
 // Accepts one chunk of CSV rows from the browser and upserts them into
 // master_database. The client parses the file and POSTs in batches, so this
@@ -21,6 +22,9 @@ const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()
 const bodySchema = z.object({ rows: z.array(rowSchema).min(1).max(1000) });
 
 export async function POST(request: Request) {
+  const denied = requireApiKey(request);
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();

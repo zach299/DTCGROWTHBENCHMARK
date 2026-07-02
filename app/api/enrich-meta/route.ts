@@ -8,6 +8,7 @@ import { logger } from '@/lib/utils/logger';
 import { normalizeCategory } from '@/lib/categories';
 import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
 import { analyzeCreativeQuality } from '@/lib/creativeQuality';
+import { requireApiKey } from '@/lib/apiAuth';
 
 // Meta-only enrichment for the bulk dataset. No website crawl, no Google /
 // LinkedIn, no AI. Returns the computed Meta signals; the bulk script persists
@@ -52,6 +53,9 @@ function activityLevel(c: number): string {
 }
 
 export async function POST(request: Request) {
+  const denied = requireApiKey(request);
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();

@@ -21,6 +21,7 @@ import {
 import { writeSnapshot, getTrends, getTimeline, type SnapshotMetrics } from '@/lib/trends';
 import { computeMomentum, revenueRange } from '@/lib/intelligence';
 import { buildResearchBrief } from '@/lib/researchBrief';
+import { requireApiKey } from '@/lib/apiAuth';
 
 // Cache TTL: ad data (Meta/Google/LinkedIn) is considered fresh for 7 days.
 const CACHE_TTL_DAYS = 7;
@@ -289,6 +290,9 @@ type RawResponse = {
 };
 
 export async function POST(request: Request) {
+  const denied = requireApiKey(request);
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await request.json();

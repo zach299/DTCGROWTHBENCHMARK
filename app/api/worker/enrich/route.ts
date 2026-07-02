@@ -179,11 +179,14 @@ async function enrichDomain(
 
 export async function GET(request: Request) {
   // Vercel cron invocations are GET requests with Authorization: Bearer <secret>.
-  if (CRON_SECRET) {
-    const auth = request.headers.get('authorization') ?? '';
-    if (auth !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  // Fail CLOSED: without a configured secret this endpoint must not be public —
+  // it triggers paid Apify runs.
+  if (!CRON_SECRET) {
+    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 503 });
+  }
+  const auth = request.headers.get('authorization') ?? '';
+  if (auth !== `Bearer ${CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   if (!process.env.APIFY_TOKEN) {
