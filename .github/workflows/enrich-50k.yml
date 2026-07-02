@@ -2,19 +2,19 @@ name: Enrich Top 50k Brands
 
 on:
   schedule:
-    # Requested every 20 min; GitHub throttles scheduled runs on busy runners,
-    # so in practice this fires roughly every 1-2 hours. Each run processes
-    # up to 200 domains at concurrency 6 (~20 min). ~12 runs/day × 200 =
-    # ~2,400/day → the top-50k cohort stays refreshed on a ~21-day cycle.
-    - cron: '*/20 * * * *'
+    # Daily at 06:00 UTC (~10pm PT / 1am ET). Each run enriches up to 3,000
+    # stale domains at concurrency 6 (~5-6 hours). Domains enriched within
+    # SKIP_DAYS are skipped, so the top-50k cohort refreshes on a rolling
+    # ~17-day cycle at this pace; slower once maintenance-only.
+    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       batch:
         description: 'Domains per batch fetch'
-        default: '200'
+        default: '3000'
       max_total:
         description: 'Max total to enrich this run'
-        default: '200'
+        default: '3000'
 
 concurrency:
   group: enrich-50k
@@ -47,6 +47,6 @@ jobs:
           SKIP_DAYS: '30'
           MAX_RETRIES: '2'
         run: |
-          BATCH=${{ github.event.inputs.batch || '200' }}
-          MAX=${{ github.event.inputs.max_total || '200' }}
+          BATCH=${{ github.event.inputs.batch || '3000' }}
+          MAX=${{ github.event.inputs.max_total || '3000' }}
           node scripts/worker.mjs $BATCH $MAX
