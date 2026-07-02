@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
 import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
+import { buildOutboundAngle } from '@/lib/reason';
 
 // Chrome-extension entry point. Resolves a domain to its cached Growth Signals,
 // AND ensures every looked-up domain becomes a first-class company in the
@@ -91,9 +92,40 @@ export async function POST(request: Request) {
       });
     }
 
+    // Ready-to-copy outbound angle from the cached signal row + spend estimate.
+    let outboundAngle: string | null = null;
+    if (sig) {
+      const s = sig as Record<string, unknown>;
+      const name =
+        (s.company_name as string) ||
+        (seed.company_name as string) ||
+        domain.split('.')[0];
+      // Meta-ad change vs last tracked snapshot, when history exists.
+      const adPts = history.filter((h) => h.active_meta_ads != null);
+      let metaChangePct: number | null = null;
+      if (adPts.length >= 2) {
+        const prev = adPts[adPts.length - 2].active_meta_ads as number;
+        const last = adPts[adPts.length - 1].active_meta_ads as number;
+        if (prev > 0) metaChangePct = Math.round(((last - prev) / prev) * 100);
+      }
+      outboundAngle = buildOutboundAngle(name, {
+        metaAds: s.active_meta_ads != null ? Number(s.active_meta_ads) : null,
+        metaChangePct,
+        creativeDiversityScore:
+          s.creative_diversity_score != null ? Number(s.creative_diversity_score) : null,
+        realCreativeScore: s.real_creative_score != null ? Number(s.real_creative_score) : null,
+        dpaShare: s.dpa_share != null ? Number(s.dpa_share) : null,
+        momentum: (s.growth_momentum as string) ?? null,
+        growthScore: s.growth_score != null ? Number(s.growth_score) : null,
+        spend: spendEstimate,
+        landingPages: Array.isArray(s.landing_pages) ? s.landing_pages.length : null,
+      });
+    }
+
     return NextResponse.json({
       domain,
       is_new: isNew,
+      outbound_angle: outboundAngle,
       history,
       spend_estimate: spendEstimate,
       signals: sig ?? null,

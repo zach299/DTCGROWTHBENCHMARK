@@ -1,4 +1,5 @@
-// Growth Signals — Chrome extension popup (premium dark redesign v2).
+// Tambourine — Chrome extension popup (premium dark redesign v2).
+// Find your fastest-growing TAM: account-level growth signals on every site.
 // Every lookup runs through /api/extension/lookup, which handles unknown domains
 // and returns 7-day cache state. Stale/missing data is enriched automatically.
 const DEFAULT_API_BASE = 'https://dtcgrowthbenchmark.vercel.app';
@@ -52,6 +53,7 @@ function normalize(sig, domain) {
     cache_age_days: null,
     history: [],
     spend_estimate: null,
+    outbound_angle: null,
     rank: null,
     percentile_top: null,
     category_rank: null,
@@ -234,11 +236,23 @@ function historyChange(history) {
   return { pct: Math.round(pct * 10) / 10, first, last };
 }
 
-function trendSection(history) {
+function trendSection(history, growthScore) {
   const pts = (history || []).filter((h) => h && h.growth_score != null);
   let body;
   if (pts.length < 2) {
-    body = `<div class="trend-empty">Tracking started — history builds with each refresh</div>`;
+    const score = growthScore != null ? growthScore : (pts[0]?.growth_score ?? null);
+    body = `
+      <div class="trend-empty">
+        <svg width="440" height="34" viewBox="0 0 440 34" class="trend-baseline" preserveAspectRatio="none">
+          <line x1="6" y1="17" x2="434" y2="17" stroke="#2a2f42" stroke-width="2"
+            stroke-dasharray="3 6" stroke-linecap="round"/>
+          <circle cx="434" cy="17" r="4" fill="#3de0a0" stroke="#10121a" stroke-width="1.5"/>
+        </svg>
+        <div class="trend-empty-meta">
+          ${score != null ? `<span class="trend-empty-score">Score ${score}</span>` : ''}
+          <span class="trend-empty-text">Tracking started — history builds with each refresh</span>
+        </div>
+      </div>`;
   } else {
     const W = 440, H = 64, PAD = 6;
     const vals = pts.map((p) => p.growth_score);
@@ -390,28 +404,29 @@ function render(n) {
       </div>
     </div>`;
 
-  // Action row with Save + Watchlist inline
+  // Action row: brief, copy outbound angle, save
+  const copyBtn = n.outbound_angle
+    ? `<button class="action-btn" id="copy-angle">${ICONS.creative} Copy Angle</button>`
+    : '';
   const actionRow = `
     <div class="action-row">
       <button class="action-btn" id="open-report">
-        ${ICONS.report} Open Full Report
+        ${ICONS.report} Research Brief
       </button>
+      ${copyBtn}
       <button class="action-btn" id="save">
-        ${ICONS.bookmark} Save Company
+        ${ICONS.bookmark} Save
       </button>
-      <div class="add-wrap">
-        <button class="action-btn" id="add-watchlist">
-          ${ICONS.eye} Add to Watchlist
-        </button>
-        <div id="lists" class="lists hidden"></div>
-      </div>
     </div>`;
 
-  // Big CTA
+  // Big CTA: watchlist (dropdown opens above)
   const ctaBtn = `
-    <button class="cta-btn" id="view-brief">
-      ✦ View Research Brief
-    </button>`;
+    <div class="add-wrap cta-wrap">
+      <button class="cta-btn" id="add-watchlist">
+        ${ICONS.eye} Add to Watchlist
+      </button>
+      <div id="lists" class="lists hidden"></div>
+    </div>`;
 
   el('result').innerHTML = `
     <div class="co-header">
@@ -426,7 +441,7 @@ function render(n) {
     </div>
     ${statsGrid}
     ${spendRow(n.spend_estimate)}
-    ${trendSection(n.history)}
+    ${trendSection(n.history, n.growth_score)}
     ${themesSection}
     ${briefCard}
     ${actionRow}
@@ -446,10 +461,20 @@ function bindResultButtons(n) {
     });
   }
 
-  const viewBrief = el('view-brief');
-  if (viewBrief) {
-    viewBrief.addEventListener('click', () => {
-      chrome.tabs.create({ url: `${API_BASE}/?domain=${encodeURIComponent(n.domain)}` });
+  const copyAngle = el('copy-angle');
+  if (copyAngle) {
+    copyAngle.addEventListener('click', async () => {
+      if (!n.outbound_angle) return;
+      try {
+        await navigator.clipboard.writeText(n.outbound_angle);
+        const original = copyAngle.innerHTML;
+        copyAngle.innerHTML = `${ICONS.check} Copied ✓`;
+        copyAngle.classList.add('ok');
+        setTimeout(() => {
+          copyAngle.innerHTML = original;
+          copyAngle.classList.remove('ok');
+        }, 1500);
+      } catch { /* clipboard unavailable */ }
     });
   }
 
@@ -542,7 +567,7 @@ async function enrichBackground(domain, facebookUrl, companyName, onDone) {
 async function analyze(domain) {
   if (!domain) return;
   el('result').classList.add('hidden');
-  setStatus(loadingChart('Loading Growth Signals…'));
+  setStatus(loadingChart('Loading growth signals…'));
   try {
     const res = await fetch(`${API_BASE}/api/extension/lookup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -561,6 +586,7 @@ async function analyze(domain) {
       n.cache_age_days = data.cache_age_days;
       n.history = data.history || [];
       n.spend_estimate = data.spend_estimate || null;
+      n.outbound_angle = data.outbound_angle || null;
       render(n);
       fetchRank(n);
 
@@ -573,6 +599,7 @@ async function analyze(domain) {
           updated.cache_age_days = 0;
           updated.history = data.history || [];
           updated.spend_estimate = data.spend_estimate || null;
+          updated.outbound_angle = data.outbound_angle || null;
           render(updated);
           fetchRank(updated);
         });
@@ -586,6 +613,7 @@ async function analyze(domain) {
         n.cache_age_days = 0;
         n.history = data.history || [];
         n.spend_estimate = data.spend_estimate || null;
+        n.outbound_angle = data.outbound_angle || null;
         render(n);
         fetchRank(n);
       });

@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Growth Signals",
+  "name": "Tambourine — Growth Signals",
+  "short_name": "Tambourine",
   "version": "1.0.0",
-  "description": "Instant GTM intelligence for any company you're viewing — growth score, momentum, ad activity, and a research brief.",
+  "description": "Find your fastest-growing TAM. Account-level growth signals on every site you visit.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -11,7 +12,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Growth Signals",
+    "default_title": "Tambourine — Growth Signals",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

@@ -361,10 +361,30 @@ body {
   padding: 11px 14px 9px;
 }
 .trend-empty {
-  font-size: 11.5px;
+  padding: 8px 0 6px;
+}
+.trend-baseline { display: block; width: 100%; height: 34px; }
+.trend-empty-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.trend-empty-score {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(61, 224, 160, 0.1);
+  border: 1px solid rgba(61, 224, 160, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.trend-empty-text {
+  font-size: 11px;
   color: var(--sub);
-  padding: 14px 0 12px;
-  text-align: center;
+  text-align: right;
 }
 .trend-chart-wrap { width: 100%; }
 .trend-svg { display: block; width: 100%; height: 64px; }
@@ -536,6 +556,8 @@ body {
   flex: 1;
 }
 .add-wrap .action-btn { width: 100%; }
+.cta-wrap { width: 100%; flex: none; }
+.cta-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 .lists {
   position: absolute;
   bottom: calc(100% + 6px);
