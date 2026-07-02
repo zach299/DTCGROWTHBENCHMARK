@@ -26,7 +26,7 @@ export interface SpendInputs {
 }
 
 // Midpoint of the revenue range string in $M (rough parse, tolerant of formats).
-function revenueMidM(range: string | null | undefined): number | null {
+export function revenueMidM(range: string | null | undefined): number | null {
   if (!range) return null;
   const nums = [...range.matchAll(/\$?\s*(\d+(?:\.\d+)?)\s*(M|K|B)?/gi)].map((m) => {
     const n = parseFloat(m[1]);
