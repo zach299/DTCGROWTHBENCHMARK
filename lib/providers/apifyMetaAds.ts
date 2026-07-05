@@ -80,10 +80,12 @@ async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
     period: '',
   };
 
+  // Token goes in the Authorization header, never the URL — query strings
+  // land in proxy/CDN/access logs and error traces.
   const endpoint =
     `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
     // This actor requires <= 512MB per input URL.
-    `?token=${encodeURIComponent(token)}&timeout=120&memory=512`;
+    `?timeout=120&memory=512`;
 
   // Retry transient failures (rate limits, 5xx, network blips) with backoff so a
   // momentary Apify hiccup doesn't fail an entire bulk batch. Auth/quota errors
@@ -94,7 +96,7 @@ async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
     try {
       res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(input),
         signal: AbortSignal.timeout(125_000),
       });
