@@ -8,7 +8,8 @@ export const maxDuration = 30;
 const REFRESH_DAYS = parseInt(process.env.WORKER_REFRESH_DAYS ?? '30', 10);
 
 export async function GET() {
-  const supabase = createServiceClient();
+  try {
+    const supabase = createServiceClient();
   const cutoff = new Date(Date.now() - REFRESH_DAYS * 86_400_000).toISOString();
   const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString();
   const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
@@ -101,4 +102,10 @@ export async function GET() {
     refresh_window_days: REFRESH_DAYS,
     generated_at: new Date().toISOString(),
   });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'stats failed' },
+      { status: 500 }
+    );
+  }
 }
