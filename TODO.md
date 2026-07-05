@@ -37,3 +37,23 @@ code (tests / tsc / build) before being checked off.
 - [x] Admin "Trigger Worker Now" button broke when worker went fail-closed — replaced with GitHub Actions pointer
 - [ ] tests for lib/creativeQuality.ts (DPA detection) — next pass
 - [ ] TamListBuilder: verify CSV export escapes quotes/commas in reason text — next pass
+
+## Deployment — read this before debugging "site is down"
+**Vercel's Production branch is `claude/lucid-babbage-u29ovt`, NOT `main`.**
+Every push goes to BOTH branches (`git push origin main main:claude/lucid-babbage-u29ovt`).
+The deploy hook (`.../WbvqNGRy9v`) targets `main` and therefore creates PREVIEW
+deployments only — do not rely on it for production.
+
+### Deployment checklist
+1. Push to both branches (the standard push command above does this).
+2. Vercel → Deployments: confirm the new deployment shows **Production** (not Preview) and **Ready**.
+3. `curl -sSI https://dtcgrowthbenchmark.vercel.app` → expect HTTP 200.
+4. If 401/403: Settings → Deployment Protection → Vercel Authentication must be **off** (and SAVED).
+5. Env vars required in Production: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+   APIFY_TOKEN, ANTHROPIC_API_KEY, and (for login) NEXT_PUBLIC_SUPABASE_ANON_KEY.
+   Missing anon key = app runs with auth disabled by design (no crash).
+6. After env var changes, redeploy — env is baked at build time for NEXT_PUBLIC_*.
+
+## Auth hardening (verified)
+- [x] Missing NEXT_PUBLIC_* env vars: client returns null, authEnabled=false, app renders without login (tests/authClient.test.mts)
+- [x] Production build passes locally with and without auth env (build inlines whatever is present; runtime guards cover both)
