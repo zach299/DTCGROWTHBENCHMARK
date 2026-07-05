@@ -106,3 +106,15 @@ trend_ready), returned by /api/company and /api/extension/lookup.
 get_snapshot_stats()), last run row from enrichment_jobs, and the cadence string.
 **Verify after tonight's run:** brands_trend_ready should jump from 21 to ~3,000;
 click ruggable/fleet feet → real 2-point line, no refresh needed.
+
+## Adversarial pass 3 (found + fixed)
+- [x] domain_priority table had no RLS while anon key ships in the browser bundle — RLS enabled (no policies; service-role only). ERROR-level advisor cleared.
+- [x] get_snapshot_stats(): search_path pinned (advisor WARN).
+- [x] Fire-and-forget domain_priority upserts in serverless routes were being frozen
+      before completing (priority_domains count was 0 despite views) — now awaited.
+- [x] Run #107 (Jul 4) hit the 350-min hard timeout → 'cancelled'; worker now exits
+      cleanly at a 335-min soft deadline so in-flight claims aren't stranded.
+### Health check (Jul 5 ~05:15 UTC)
+- enriched last 24h: 2,515 (healthy); today's 06:00 UTC run not yet fired.
+- Snapshots: 59,280 total; 0 brands at zero; trend_ready=21 (expect ~3k after today's run,
+  which is the first with the priority pass + seed in place).

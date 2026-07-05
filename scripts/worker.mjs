@@ -46,6 +46,9 @@ const MAX_RETRIES = Number(process.env.MAX_RETRIES || 2);
 const PAUSE_FILE = process.env.PAUSE_FILE || resolve(__dirname, '.pause');
 const BATCH = Number(process.argv[2] || process.env.BATCH || 50);
 const MAX_TOTAL = Number(process.argv[3] || process.env.MAX_TOTAL || 50000);
+// Soft deadline: exit cleanly before the CI hard timeout (which strands
+// in-flight claims as fresh-but-empty for 30 days).
+const MAX_RUNTIME_MIN = Number(process.env.MAX_RUNTIME_MIN || 335);
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
@@ -298,6 +301,10 @@ async function main() {
   let lastProgressLog = Date.now();
 
   while (totalDone < MAX_TOTAL) {
+    if ((Date.now() - t0) / 60000 > MAX_RUNTIME_MIN) {
+      log(`Soft deadline (${MAX_RUNTIME_MIN}m) reached — exiting cleanly before CI timeout.`);
+      break;
+    }
     // Check pause file
     if (existsSync(PAUSE_FILE)) {
       log('PAUSED — remove scripts/.pause to resume');
