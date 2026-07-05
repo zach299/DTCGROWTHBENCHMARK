@@ -23,7 +23,11 @@ export async function POST(request: Request) {
   } catch {
     body = {};
   }
-  const p = schema.parse(body ?? {});
+  const parsedBody = schema.safeParse(body ?? {});
+  if (!parsedBody.success) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+  const p = parsedBody.data;
   const supabase = createServiceClient();
   try {
     if (!p.job_id) {

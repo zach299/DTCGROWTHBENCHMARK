@@ -29,7 +29,11 @@ export async function POST(request: Request) {
   } catch {
     body = {};
   }
-  const limit = schema.parse(body ?? {}).limit;
+  const parsedBody = schema.safeParse(body ?? {});
+  if (!parsedBody.success) {
+    return NextResponse.json({ targets: [], error: 'Invalid request body' }, { status: 400 });
+  }
+  const limit = parsedBody.data.limit;
   const supabase = createServiceClient();
 
   try {
