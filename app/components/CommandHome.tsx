@@ -244,17 +244,17 @@ export default function CommandHome({
   return (
     <div className="tam-hero-glow -mx-4 -my-6 min-h-full px-4 pb-16 pt-4 sm:-mx-6 sm:px-6">
       {/* Hero */}
-      <div className="mx-auto flex max-w-[720px] flex-col items-center pt-16 text-center sm:pt-20">
+      <div className="mx-auto flex max-w-[720px] flex-col items-center pt-12 text-center sm:pt-16">
         <h1 className="text-[38px] font-bold leading-[1.08] tracking-tight text-gray-900 sm:text-5xl">
           Find your <span className="tam-gradient-text">fastest-growing</span> TAM
         </h1>
-        <p className="mt-4 max-w-[560px] text-[15px] leading-relaxed text-gray-500">
+        <p className="mt-3 max-w-[560px] text-[15px] leading-relaxed text-gray-500">
           Tambourine helps GTM teams build account lists from growth signals like ad activity,
           spend estimates, revenue, tech stack, and market momentum.
         </p>
 
         {firstVisit && buildingStep == null && (
-          <div className="mt-8 text-[11px] font-semibold uppercase tracking-widest text-indigo-300">
+          <div className="mt-6 text-[11px] font-semibold uppercase tracking-widest text-indigo-300">
             What market are you selling into?
           </div>
         )}
@@ -263,13 +263,16 @@ export default function CommandHome({
         {buildingStep == null ? (
           <>
             <form
-              className={`w-full ${firstVisit ? 'mt-2' : 'mt-9'}`}
+              className={`w-full ${firstVisit ? 'mt-2' : 'mt-7'}`}
               onSubmit={(e) => {
                 e.preventDefault();
                 submit(query);
               }}
             >
-              <div className="tam-prompt flex items-center gap-2 rounded-2xl bg-white py-2 pl-3 pr-2">
+              <div
+                className="tam-prompt flex cursor-text items-center gap-2 rounded-2xl bg-white py-2 pl-3 pr-2"
+                onClick={() => inputRef.current?.focus()}
+              >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-300">
                   <SparkleIcon width={14} height={14} />
                 </span>
@@ -297,7 +300,7 @@ export default function CommandHome({
             </form>
 
             {/* Suggested prompt chips */}
-            <div className="mt-5 flex max-w-[640px] flex-wrap justify-center gap-2">
+            <div className="mt-4 flex max-w-[640px] flex-wrap justify-center gap-2">
               {SUGGESTED.map((s) => (
                 <button
                   key={s.label}
@@ -462,14 +465,14 @@ export default function CommandHome({
                   <th className="py-2 text-right">Momentum</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {preview.map((m) => (
                   <tr
                     key={m.domain}
                     onClick={() => onSelectDomain(m.domain)}
-                    className="cursor-pointer transition-colors hover:bg-gray-50"
+                    className="cursor-pointer border-b border-white/5 text-[13px] transition-colors last:border-0 hover:bg-white/[0.03]"
                   >
-                    <td className="py-2.5 pr-3">
+                    <td className="py-2 pr-3">
                       <div className="flex items-center gap-2.5">
                         <Favicon domain={m.domain} />
                         <div className="min-w-0">
@@ -480,7 +483,7 @@ export default function CommandHome({
                         </div>
                       </div>
                     </td>
-                    <td className="hidden py-2.5 pr-3 sm:table-cell">
+                    <td className="hidden py-2 pr-3 sm:table-cell">
                       {m.primary_category ? (
                         <span className={`inline-block max-w-[130px] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${catTone(m.primary_category)}`}>
                           {m.primary_category}
@@ -489,15 +492,15 @@ export default function CommandHome({
                         <span className="text-gray-500">—</span>
                       )}
                     </td>
-                    <td className="py-2.5 pr-3 text-right">
+                    <td className="py-2 pr-3 text-right">
                       <span className="inline-block rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-emerald-400 ring-1 ring-emerald-500/20">
                         {m.growth_score ?? '—'}
                       </span>
                     </td>
-                    <td className="hidden whitespace-nowrap py-2.5 pr-3 text-right text-xs tabular-nums text-gray-600 md:table-cell">
+                    <td className="hidden whitespace-nowrap py-2 pr-3 text-right tabular-nums text-gray-600 md:table-cell">
                       {m.spend_estimate?.label ?? '—'}
                     </td>
-                    <td className="py-2.5 text-right">
+                    <td className="py-2 text-right">
                       <span className="inline-flex items-center justify-end">
                         <MiniTrend
                           up={m.growth_momentum !== 'Dormant' && m.growth_momentum !== 'Emerging'}
@@ -545,16 +548,18 @@ export default function CommandHome({
                 body="Build your first TAM list and save accounts to see them here."
               />
             ) : (
-              <ul className="divide-y divide-gray-100">
+              <ul>
                 {lists.map((l) => (
-                  <li key={l.name}>
+                  <li key={l.name} className="border-b border-white/5 last:border-0">
                     <button
                       onClick={onOpenWatchlist}
-                      className="flex w-full items-center gap-2.5 py-2.5 text-left"
+                      className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-white/[0.03]"
                     >
-                      <DocIcon width={15} height={15} className="text-gray-500" />
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-300">
+                        <DocIcon width={14} height={14} />
+                      </span>
                       <span className="flex-1 truncate text-sm font-medium text-gray-800">{l.name}</span>
-                      <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] font-semibold text-gray-400 ring-1 ring-white/10">
+                      <span className="ml-auto rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] font-semibold text-gray-400 ring-1 ring-white/10">
                         {l.count}
                       </span>
                     </button>
@@ -570,15 +575,15 @@ export default function CommandHome({
               <SparkleIcon width={14} height={14} className="text-indigo-400" />
               Why accounts matter
             </h3>
-            <ul className="space-y-2.5">
+            <ul className="space-y-2">
               {[
                 'Rank companies by growth signals',
                 'Build and export TAM lists',
                 'Turn account data into outbound angles',
               ].map((t) => (
                 <li key={t} className="flex items-center gap-2.5 text-[13px] text-gray-600">
-                  <span className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-                    <CheckIcon width={11} height={11} />
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                    <CheckIcon width={14} height={14} />
                   </span>
                   {t}
                 </li>

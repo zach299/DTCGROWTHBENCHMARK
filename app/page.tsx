@@ -1785,7 +1785,7 @@ function AppShell() {
                 <div className="flex items-start gap-4">
                   <LogoTile domain={result.domain} name={brandName} />
                   <div>
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-2.5">
                       <h1 className="text-[28px] leading-tight font-bold tracking-tight text-gray-900 capitalize">{brandName}</h1>
                       {enriching ? (
                         <span className="flex items-center gap-1.5 text-[12px] font-medium text-indigo-400">
@@ -1799,7 +1799,7 @@ function AppShell() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-gray-500">
                       <a
                         href={`https://${result.domain.replace(/^https?:\/\//, '')}`}
                         target="_blank"
@@ -1824,7 +1824,7 @@ function AppShell() {
                       )}
                     </div>
                     {rankInfo?.rank && (
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1 text-[12px] font-bold text-white">
                           <BoltIcon width={12} height={12} />
                           Growth Rank #{rankInfo.rank.toLocaleString()}
@@ -1855,7 +1855,7 @@ function AppShell() {
                   <div className="relative">
                     <button
                       onClick={() => setSaveOpen((s) => !s)}
-                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="inline-flex h-9 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
                       {savedTo ? (
                         <span className="inline-flex items-center gap-1.5 text-green-700">
@@ -1882,7 +1882,7 @@ function AppShell() {
                   </div>
                   <button
                     onClick={copyBrief}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                    className={`inline-flex h-9 items-center rounded-lg px-4 text-sm font-medium ${
                       copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                     }`}
                   >
@@ -1926,7 +1926,7 @@ function AppShell() {
                     <Skeleton className="h-8 w-16" />
                   ) : rankInfo?.rank ? (
                     <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-bold text-gray-900 tabular-nums">#{rankInfo.rank}</span>
+                      <span className="text-xl font-semibold text-gray-900 tabular-nums">#{rankInfo.rank}</span>
                       {rankInfo.percentile_top != null && (
                         <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
                           Top {rankInfo.percentile_top}%
@@ -1935,7 +1935,7 @@ function AppShell() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <span className={`text-xl font-bold ${scoreColor(gScore)}`}>{gScore}</span>
+                      <span className={`text-xl font-semibold ${scoreColor(gScore)}`}>{gScore}</span>
                       <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
                         {scoreLabel(gScore)}
                       </span>
@@ -1948,7 +1948,7 @@ function AppShell() {
                   sub={hasAnalysis ? intensitySub(result.paid_media_signal ?? '') : undefined}
                 >
                   {hasAnalysis ? (
-                    <div className="text-xl font-bold text-gray-900">
+                    <div className="text-xl font-semibold text-gray-900">
                       {intensityLabel(result.paid_media_signal ?? '')}
                     </div>
                   ) : (
@@ -1968,7 +1968,7 @@ function AppShell() {
                     ) : undefined
                   }
                 >
-                  <div className="text-xl font-bold text-gray-900 tabular-nums">
+                  <div className="text-xl font-semibold text-gray-900 tabular-nums">
                     {result.revenue_range ?? formatMoney(sales)}
                   </div>
                 </MetricCard>
@@ -1982,7 +1982,7 @@ function AppShell() {
                   }
                 >
                   {hasAnalysis || result.meta_ads ? (
-                    <div className="text-xl font-bold text-gray-900 tabular-nums">{metaCount}</div>
+                    <div className="text-xl font-semibold text-gray-900 tabular-nums">{metaCount}</div>
                   ) : (
                     <Skeleton className="h-8 w-12" />
                   )}
@@ -2006,7 +2006,7 @@ function AppShell() {
                 >
                   {hasAnalysis || result.meta_ads ? (
                     spendEst ? (
-                      <div className="text-xl font-bold text-gray-900 tabular-nums">{spendEst.label}</div>
+                      <div className="text-xl font-semibold text-gray-900 tabular-nums">{spendEst.label}</div>
                     ) : (
                       <SpendEstimateBadge estimate={spendEst} />
                     )
@@ -2020,7 +2020,7 @@ function AppShell() {
                   sub={result.growth_momentum ? momentumSub(result.growth_momentum) : undefined}
                 >
                   {result.growth_momentum ? (
-                    <div className={`inline-flex items-center gap-1.5 text-lg font-bold ${momentumColor(result.growth_momentum)}`}>
+                    <div className={`inline-flex items-center gap-1.5 text-xl font-semibold ${momentumColor(result.growth_momentum)}`}>
                       <span className={`h-2 w-2 rounded-full ${MOMENTUM_DOT[result.growth_momentum] ?? 'bg-gray-400'}`} />
                       {result.growth_momentum}
                     </div>
@@ -2164,6 +2164,7 @@ function AppShell() {
                   {/* Growth Narrative */}
                   {result.growth_narrative && (
                     <Card
+                      className="min-w-0 overflow-hidden"
                       title={
                         <span className="inline-flex items-center gap-1.5">
                           <SparkleIcon width={13} height={13} className="text-indigo-400" />
@@ -2184,7 +2185,7 @@ function AppShell() {
                         <span className="mb-2 inline-block rounded bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-indigo-300">
                           Summary
                         </span>
-                        <p className="text-[13px] leading-relaxed text-gray-800">{result.growth_narrative}</p>
+                        <p className="break-words text-[13px] leading-relaxed text-gray-800">{result.growth_narrative}</p>
                       </div>
                       {result.growth_momentum && (
                         <div className="mt-4">

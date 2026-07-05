@@ -72,3 +72,16 @@ deployments only — do not rely on it for production.
 **Verified:** 40 tests green incl. new domain-canonicalization + trends-window suites.
 **Next (commit 2):** client hydration — canonical history fetched on report load, kept in
 separate state, never replaced by pending enrichment; specific loading copy; chart module polish.
+
+## Priority-shift verification (trend fix + polish)
+- [x] Commit 2: brand-detail history hydration — dedicated never-shrinking state slot,
+      canonical /api/company fetch on every load, phase-2 can't clobber the chart,
+      specific loading copy, 3-tab full-width chart with last-updated + snapshot count.
+- [x] Commit 3: screenshot polish — Top Movers max-width/density/divider artifact
+      (light-mode divide-gray-100 was the "broken white line"), clickable rows w/ hover
+      chevron, grouped filter toolbar, spend-explanation tooltips; brand-detail metric
+      strip normalized, narrative overflow fixed; home hero rhythm, prompt focus glow,
+      preview-row parity, card tile consistency.
+- Verified each: tsc 0 errors, 43/43 tests, production build green.
+- Manual browser click-through (ruggable.com from Top Movers etc.) still needs a human
+  pass — automated layers (API shape, state flow, build) are covered by tests.

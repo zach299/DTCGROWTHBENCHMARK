@@ -187,16 +187,23 @@ body {
     radial-gradient(900px 500px at 50% 0%, rgba(99, 102, 241, 0.08), transparent 75%);
 }
 .tam-prompt {
+  /* Resting state reads as clearly interactive: ~white/15 hairline + soft glow */
   box-shadow:
-    0 0 0 1px rgba(139, 124, 247, 0.25),
-    0 0 24px rgba(124, 108, 247, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.15),
+    0 0 24px rgba(124, 108, 247, 0.14),
     0 8px 40px rgba(0, 0, 0, 0.4);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow 0.25s ease;
+}
+.tam-prompt:hover {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 28px rgba(124, 108, 247, 0.18),
+    0 8px 40px rgba(0, 0, 0, 0.4);
 }
 .tam-prompt:focus-within {
   box-shadow:
-    0 0 0 1px rgba(139, 124, 247, 0.55),
-    0 0 36px rgba(124, 108, 247, 0.22),
+    0 0 0 2px rgba(139, 124, 247, 0.6),
+    0 0 44px rgba(124, 108, 247, 0.3),
     0 8px 40px rgba(0, 0, 0, 0.4);
 }
 .dark-app .tam-prompt input {
