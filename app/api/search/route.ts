@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
+import { escapeIlike } from '@/lib/utils/sanitize';
 
 // search_companies — match master_database rows by domain substring. Used by
 // the MCP server ("which companies look like X", "tell me about Ridge").
@@ -19,17 +20,7 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'query required' }, { status: 400 });
 
-  // Sanitize for PostgREST .ilike(): escape LIKE wildcards and strip filter
-  // grammar characters (`,()` can break out of the filter value entirely).
-  const q = parsed.data.query
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/[,()*]/g, '')
-    .replace(/\\/g, '\\\\')
-    .replace(/[%_]/g, (m) => `\\${m}`)
-    .slice(0, 100);
+  const q = escapeIlike(parsed.data.query.replace(/^https?:\/\//, '').replace(/^www\./, ''));
   if (!q) return NextResponse.json({ results: [] });
   const limit = Math.min(parsed.data.limit ?? 10, 25);
   const supabase = createServiceClient();

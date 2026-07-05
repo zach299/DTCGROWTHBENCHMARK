@@ -5,6 +5,7 @@ import { parseTamQuery, describeFilters, type TamFilters } from '@/lib/tamQuery'
 import { estimateMonthlySpend, revenueMidM, type SpendEstimate } from '@/lib/adSpend';
 import { buildReason, buildOutboundAngle } from '@/lib/reason';
 import { logger } from '@/lib/utils/logger';
+import { escapeIlike } from '@/lib/utils/sanitize';
 
 // TAM list builder — the core product query. Accepts a natural-language
 // `query` and/or explicit `filters`, returns ranked accounts with spend
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
       )
       .not('growth_score', 'is', null);
 
-    if (f.category) q = q.ilike('primary_category', `%${f.category.replace(/[%_,()]/g, '')}%`);
+    if (f.category) q = q.ilike('primary_category', `%${escapeIlike(f.category, 60)}%`);
     if (f.metaAdsMin) q = q.gte('active_meta_ads', f.metaAdsMin);
     if (f.growthScoreMin) q = q.gte('growth_score', f.growthScoreMin);
     if (f.momentum?.length) q = q.in('growth_momentum', f.momentum);
