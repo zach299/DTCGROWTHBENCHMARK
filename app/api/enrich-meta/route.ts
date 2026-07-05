@@ -203,6 +203,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('enrich-meta failed', { domain, error: msg });
-    return NextResponse.json({ ok: false, error: msg }, { status: 200 });
+    // 502 so monitoring/alerting sees real failures; callers key off body.ok.
+    return NextResponse.json({ ok: false, error: msg }, { status: 502 });
   }
 }
