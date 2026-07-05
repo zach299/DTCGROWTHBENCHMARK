@@ -20,7 +20,7 @@ code (tests / tsc / build) before being checked off.
 ## P2 — UX polish
 - [ ] Verify chart metric toggles hide when a series has no data (visual pass once more history accumulates)
 - [ ] Extension: confirm outbound-angle button hidden for domains with no signals
-- [ ] Homepage stat cards derive from top-300 ranked set, not full universe — consider a /api/stats endpoint
+- [x] Homepage stat cards — new /api/stats full-universe endpoint (5-min cache), CommandHome prefers it with movers fallback
 
 ## P3 — Code quality
 - [x] Tests for lib/tamQuery.ts + lib/reason.ts (17 total tests green)

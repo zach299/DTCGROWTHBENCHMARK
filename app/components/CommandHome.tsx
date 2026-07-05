@@ -110,16 +110,31 @@ export default function CommandHome({
   const [movers, setMovers] = useState<Mover[] | null>(null);
   const [total, setTotal] = useState(0);
   const [lists, setLists] = useState<{ name: string; count: number }[] | null>(null);
+  const [universe, setUniverse] = useState<{
+    companies_tracked: number;
+    growing_this_month: number;
+    est_monthly_spend_tracked: number;
+    top_categories: string[];
+  } | null>(null);
   const [firstVisit, setFirstVisit] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    fetch('/api/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.companies_tracked === 'number') {
+          setUniverse(d);
+          setTotal(d.companies_tracked);
+        }
+      })
+      .catch(() => {});
     fetch('/api/top-movers')
       .then((r) => r.json())
       .then((d) => {
         setMovers(d.movers ?? []);
-        setTotal(d.total ?? 0);
+        setTotal((prev) => prev || (d.total ?? 0));
       })
       .catch(() => setMovers([]));
     fetch('/api/watchlist')
@@ -163,6 +178,14 @@ export default function CommandHome({
   }
 
   const stats = useMemo(() => {
+    // Prefer full-universe stats from /api/stats; fall back to the ranked slice.
+    if (universe) {
+      return {
+        growing: universe.growing_this_month,
+        spendMid: universe.est_monthly_spend_tracked,
+        topCats: universe.top_categories,
+      };
+    }
     if (!movers || movers.length === 0) return null;
     const growing = movers.filter(
       (m) => m.growth_momentum === 'Accelerating' || m.growth_momentum === 'Exploding'
@@ -180,7 +203,7 @@ export default function CommandHome({
     }
     const topCats = [...catCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c]) => c);
     return { growing, spendMid, topCats };
-  }, [movers]);
+  }, [movers, universe]);
 
   const catTone = (c: string) => {
     const tones = [
