@@ -152,15 +152,15 @@ function UpgradeModal({
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
           Tambourine Pro unlocks unlimited exports and briefs, plus larger TAM lists and alerts.
         </p>
-        <button className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">
-          Upgrade to Tambourine Pro
-        </button>
         <a
           href="mailto:zach@tambourinegrowth.com?subject=Tambourine%20Pro"
-          className="mt-3 block text-center text-xs font-medium text-gray-400 hover:text-gray-300"
+          className="mt-5 block w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-indigo-500"
         >
-          or contact us
+          Upgrade to Tambourine Pro
         </a>
+        <p className="mt-3 text-center text-xs font-medium text-gray-400">
+          Upgrades are handled over email for now — we reply fast.
+        </p>
       </div>
     </div>
   );
@@ -183,6 +183,7 @@ export default function TamListBuilder({
   const [upgrade, setUpgrade] = useState<'export' | 'brief' | null>(null);
   const [quota, setQuota] = useState({ exports: 0, briefs: 0 });
   const reqId = useRef(0);
+  const lastBody = useRef<{ query?: string; filters?: TamFilters }>({ filters: { sort: 'growth' } });
 
   // Filter controls
   const [category, setCategory] = useState('');
@@ -202,6 +203,7 @@ export default function TamListBuilder({
 
   const runQuery = useCallback(async (body: { query?: string; filters?: TamFilters }) => {
     const id = ++reqId.current;
+    lastBody.current = body;
     setLoading(true);
     setError(null);
     try {
@@ -209,8 +211,9 @@ export default function TamListBuilder({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, limit: 200 }),
+        signal: AbortSignal.timeout(15_000),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({}));
       if (id !== reqId.current) return;
       if (!r.ok) {
         setError(d.error || 'Query failed — please try again.');
@@ -223,8 +226,13 @@ export default function TamListBuilder({
         for (const a of (d as TamResponse).accounts) if (a.category) s.add(a.category);
         return [...s].sort();
       });
-    } catch {
-      if (id === reqId.current) setError('Network error — please try again.');
+    } catch (e) {
+      if (id === reqId.current)
+        setError(
+          e instanceof Error && e.name === 'TimeoutError'
+            ? 'Building the list took too long.'
+            : 'Network error — please try again.'
+        );
     } finally {
       if (id === reqId.current) setLoading(false);
     }
@@ -293,11 +301,12 @@ export default function TamListBuilder({
 
   async function save(a: TamAccount) {
     try {
-      await fetch('/api/watchlist', {
+      const r = await fetch('/api/watchlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain: a.domain, brand_name: a.company_name, list_name: 'Prospects' }),
       });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       flash(`Saved ${a.company_name || a.domain} to Prospects`);
     } catch {
       flash('Save failed');
@@ -489,7 +498,15 @@ export default function TamListBuilder({
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          <span>{error}</span>
+          <button
+            onClick={() => runQuery(lastBody.current)}
+            className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+          >
+            Retry
+          </button>
+        </div>
       ) : accounts.length === 0 ? (
         <div className="rounded-2xl border border-gray-200 bg-white">
           <EmptyState

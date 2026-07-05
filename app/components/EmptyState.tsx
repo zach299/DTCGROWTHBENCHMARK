@@ -7,16 +7,18 @@ export default function EmptyState({
   title,
   body,
   action,
+  compact = false,
   className = '',
 }: {
   icon?: ReactNode;
   title: string;
   body?: ReactNode;
   action?: ReactNode;
+  compact?: boolean;
   className?: string;
 }) {
   return (
-    <div className={`flex flex-col items-center justify-center px-6 py-14 text-center ${className}`}>
+    <div className={`flex flex-col items-center justify-center px-6 ${compact ? 'py-6' : 'py-14'} text-center ${className}`}>
       {icon && (
         <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-300 ring-1 ring-indigo-500/20">
           {icon}

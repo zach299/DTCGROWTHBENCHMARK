@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Skeleton from '@/app/components/Skeleton';
 
 interface WorkerStats {
   total_brands: number;
@@ -60,12 +61,18 @@ export default function AdminPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/worker/stats');
+      const res = await fetch('/api/worker/stats', { signal: AbortSignal.timeout(15_000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStats(await res.json());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load stats');
+      setError(
+        e instanceof Error && e.name === 'TimeoutError'
+          ? 'Stats took too long to load — retrying automatically, or hit Refresh.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to load stats'
+      );
     } finally {
       setLoading(false);
     }
@@ -105,7 +112,11 @@ export default function AdminPage() {
         )}
 
         {loading && !stats ? (
-          <div className="text-zinc-500 text-sm">Loading…</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[...Array(8)].map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
         ) : stats ? (
           <>
             <section className="mb-8">

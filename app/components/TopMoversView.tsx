@@ -5,6 +5,8 @@ import type { SpendEstimate } from '@/lib/adSpend';
 import { formatSpend, revenueMidM } from '@/lib/adSpend';
 import { buildReason } from '@/lib/reason';
 import Skeleton from './Skeleton';
+import EmptyState from './EmptyState';
+import { SearchIcon, TrendUpIcon } from './icons';
 import MiniSparkline from './MiniSparkline';
 import SpendEstimateBadge, { SPEND_HELPER } from './SpendEstimateBadge';
 
@@ -71,25 +73,41 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
   const [categories, setCategories] = useState<string[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>('fastest');
   const [cat, setCat] = useState<string>('');
   const [minRevM, setMinRevM] = useState<number>(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const r = await fetch('/api/top-movers');
+        const r = await fetch('/api/top-movers', { signal: AbortSignal.timeout(15_000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
-        setMovers(d.movers ?? []);
-        setCategories(d.categories ?? []);
+        if (cancelled) return;
+        setMovers(Array.isArray(d.movers) ? d.movers : []);
+        setCategories(Array.isArray(d.categories) ? d.categories : []);
         setTotal(d.total ?? 0);
-      } catch {
+      } catch (e) {
+        if (cancelled) return;
         setMovers([]);
+        setError(
+          e instanceof Error && e.name === 'TimeoutError'
+            ? 'Loading Top Movers took too long.'
+            : 'Couldn’t load Top Movers.'
+        );
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
   const rows = useMemo(() => {
     let list = cat ? movers.filter((m) => m.primary_category === cat) : [...movers];
@@ -239,14 +257,27 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
             <Skeleton key={i} className="h-11 w-full" />
           ))}
         </div>
+      ) : error ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          <span>{error}</span>
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+          >
+            Retry
+          </button>
+        </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center">
-          <div className="text-sm font-medium text-gray-700">No companies match this view</div>
-          <p className="mx-auto mt-1 max-w-sm text-sm text-gray-400">
-            {movers.length === 0
-              ? 'No companies enriched yet. Run a batch in Bulk Enrichment to build the leaderboard.'
-              : 'Try a different sort or clear the category filter.'}
-          </p>
+        <div className="rounded-2xl border border-gray-200 bg-white">
+          <EmptyState
+            icon={movers.length === 0 ? <TrendUpIcon width={18} height={18} /> : <SearchIcon width={18} height={18} />}
+            title="No companies match this view"
+            body={
+              movers.length === 0
+                ? 'No companies enriched yet. Run a batch in Bulk Enrichment to build the leaderboard.'
+                : 'Try a different sort or clear the category filter.'
+            }
+          />
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">

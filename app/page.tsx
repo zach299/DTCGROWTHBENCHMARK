@@ -21,7 +21,7 @@ import {
   HomeIcon,
   PlusSquareIcon,
   SettingsIcon,
-  PersonIcon,
+  XIcon,
 } from '@/app/components/icons';
 import CommandHome from '@/app/components/CommandHome';
 import AuthScreen from '@/app/components/AuthScreen';
@@ -187,12 +187,12 @@ function formatMoney(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(0)}M`;
   return `$${Math.round(n / 1_000)}K`;
 }
-const MOMENTUM_EMOJI: Record<string, string> = {
-  Dormant: '😴',
-  Emerging: '🌱',
-  Scaling: '📈',
-  Accelerating: '🚀',
-  Exploding: '💥',
+const MOMENTUM_DOT: Record<string, string> = {
+  Dormant: 'bg-gray-400',
+  Emerging: 'bg-yellow-400',
+  Scaling: 'bg-emerald-400',
+  Accelerating: 'bg-green-500',
+  Exploding: 'bg-green-500',
 };
 function momentumColor(m?: string): string {
   if (m === 'Exploding' || m === 'Accelerating') return 'text-green-600';
@@ -550,29 +550,42 @@ const WATCHLISTS = ['Prospects', 'Clients', 'Competitors'];
 function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const r = await fetch('/api/watchlist');
+      const r = await fetch('/api/watchlist', { signal: AbortSignal.timeout(15_000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
-      setItems(d.items ?? []);
-    } catch {
+      setItems(Array.isArray(d.items) ? d.items : []);
+    } catch (e) {
       setItems([]);
+      setError(
+        e instanceof Error && e.name === 'TimeoutError'
+          ? 'Loading your accounts took too long.'
+          : 'Couldn’t load your accounts.'
+      );
     } finally {
       setLoading(false);
     }
   };
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const remove = async (domain: string, list_name: string) => {
-    await fetch('/api/watchlist', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain, list_name }),
-    });
+    try {
+      await fetch('/api/watchlist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, list_name }),
+      });
+    } catch {
+      /* item stays in the list; reload below reflects server truth */
+    }
     load();
   };
 
@@ -580,7 +593,21 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">My Accounts</h1>
       {loading ? (
-        <Skeleton className="h-24 w-full" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          <span>{error}</span>
+          <button
+            onClick={load}
+            className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {WATCHLISTS.map((list) => {
@@ -588,7 +615,12 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
             return (
               <Card key={list} title={`${list} (${inList.length})`}>
                 {inList.length === 0 ? (
-                  <p className="text-sm text-gray-400">No companies yet. Find a company in Search or Top Movers and save it here.</p>
+                  <EmptyState
+                    compact
+                    icon={<StarIcon width={16} height={16} />}
+                    title="No companies yet"
+                    body="Find a company in Search or Top Movers and save it here."
+                  />
                 ) : (
                   <ul className="divide-y divide-gray-100">
                     {inList.map((it) => {
@@ -606,9 +638,10 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
                                 {it.brand_name || it.domain}
                               </span>
                               {mom && (
-                                <span className={`shrink-0 text-[10px] font-semibold ${color}`}>
-                                  {MOMENTUM_EMOJI[mom] ?? ''}
-                                </span>
+                                <span
+                                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${MOMENTUM_DOT[mom] ?? 'bg-gray-400'}`}
+                                  title={mom}
+                                />
                               )}
                             </div>
                             <div className="text-[11px] text-gray-400 mt-0.5 pl-4">
@@ -621,10 +654,11 @@ function WatchlistView({ onSelect }: { onSelect: (d: string) => void }) {
                           </button>
                           <button
                             onClick={() => remove(it.domain, list)}
-                            className="shrink-0 text-gray-300 hover:text-red-500 text-xs px-1"
+                            className="shrink-0 text-gray-300 hover:text-red-500 px-1"
                             title="Remove"
+                            aria-label={`Remove ${it.brand_name || it.domain}`}
                           >
-                            ✕
+                            <XIcon width={12} height={12} />
                           </button>
                         </li>
                       );
@@ -881,7 +915,7 @@ function ImportView({ onOpenBulk }: { onOpenBulk: () => void }) {
           </div>
           {done && (
             <div className="text-sm text-green-700 font-medium text-center pt-2">
-              ✓ Done — {fmt(prog.upserted)} companies imported.
+              Done — {fmt(prog.upserted)} companies imported.
             </div>
           )}
         </div>
@@ -894,7 +928,7 @@ function ImportView({ onOpenBulk }: { onOpenBulk: () => void }) {
           <div className="text-sm font-medium text-gray-900">Backfill intelligence</div>
           <div className="text-xs text-gray-500">
             Recompute category, growth score, revenue range &amp; spend band for already-enriched companies. Free — no re-scraping.
-            {bf.processed > 0 && ` · ${bf.updated.toLocaleString()} updated / ${bf.processed.toLocaleString()} scanned${bf.done ? ' ✓' : '…'}`}
+            {bf.processed > 0 && ` · ${bf.updated.toLocaleString()} updated / ${bf.processed.toLocaleString()} scanned${bf.done ? ' · done' : '…'}`}
           </div>
         </div>
         <button
@@ -918,7 +952,8 @@ function BulkView() {
 
   const loadStats = async () => {
     try {
-      const r = await fetch('/api/bulk-stats');
+      const r = await fetch('/api/bulk-stats', { signal: AbortSignal.timeout(15_000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setS(await r.json());
     } catch {
       setS(null);
@@ -936,8 +971,16 @@ function BulkView() {
     const target = batchSize; // total to enrich this session (auto-chained)
     setProg({ total: target, processed: 0, ok: 0, withAds: 0, failed: 0, lastError: '' });
 
-    const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    const { job_id } = await jobRes.json();
+    let job_id: unknown = null;
+    try {
+      const jobRes = await fetch('/api/bulk-job', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!jobRes.ok) throw new Error(`HTTP ${jobRes.status}`);
+      ({ job_id } = await jobRes.json());
+    } catch (e) {
+      setProg((p) => ({ ...p, lastError: `Could not start the job: ${e instanceof Error ? e.message : String(e)}`, failed: 1 }));
+      setRunning(false);
+      return;
+    }
     let processed = 0, ok = 0, withAds = 0, failed = 0, lastError = '';
     const CHUNK = 250;
 
@@ -959,6 +1002,11 @@ function BulkView() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ limit: want }),
         });
+        if (!tRes.ok) {
+          lastError = `Target fetch failed (HTTP ${tRes.status})`;
+          setProg({ total: target, processed, ok, withAds, failed, lastError });
+          break;
+        }
         const { targets } = await tRes.json();
         if (!targets?.length) break; // nothing left to enrich
 
@@ -1032,7 +1080,7 @@ function BulkView() {
             disabled={running}
             className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {running ? 'Running…' : '▶ Run'}
+            {running ? 'Running…' : 'Run'}
           </button>
           <div className="flex gap-1">
             {[1000, 5000, 10000].map((n) => (
@@ -1083,7 +1131,25 @@ function BulkView() {
       {loading ? (
         <Skeleton className="h-40 w-full" />
       ) : !s ? (
-        <Card><p className="text-sm text-gray-400">Could not load stats.</p></Card>
+        <Card>
+          <EmptyState
+            compact
+            icon={<InfoIcon width={16} height={16} />}
+            title="Couldn’t load enrichment stats"
+            body="The stats endpoint didn’t respond. Batches can still run — or retry loading."
+            action={
+              <button
+                onClick={() => {
+                  setLoading(true);
+                  loadStats();
+                }}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900"
+              >
+                Retry
+              </button>
+            }
+          />
+        </Card>
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -1250,9 +1316,9 @@ function AppShell() {
 
   // Sidebar Watchlist badge — real count from the watchlist API.
   useEffect(() => {
-    fetch('/api/watchlist')
-      .then((r) => r.json())
-      .then((d) => setWlCount(Array.isArray(d.items) ? d.items.length : null))
+    fetch('/api/watchlist', { signal: AbortSignal.timeout(15_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setWlCount(d && Array.isArray(d.items) ? d.items.length : null))
       .catch(() => setWlCount(null));
   }, []);
 
@@ -1314,10 +1380,13 @@ function AppShell() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain: result.domain, active_meta_ads: metaAdsForRank }),
+      signal: AbortSignal.timeout(15_000),
     })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled) setRankInfo(d);
+        // Rank is an optional embellishment — on failure the report simply
+        // renders without rank badges instead of blanking.
+        if (!cancelled && d && typeof d === 'object') setRankInfo(d);
       })
       .catch(() => {});
     return () => {
@@ -1329,7 +1398,7 @@ function AppShell() {
     if (!result) return;
     setSaveOpen(false);
     try {
-      await fetch('/api/watchlist', {
+      const r = await fetch('/api/watchlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1338,10 +1407,12 @@ function AppShell() {
           list_name,
         }),
       });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setSavedTo(list_name);
       setTimeout(() => setSavedTo(null), 2500);
     } catch {
-      /* noop */
+      setError('Couldn’t save to your watchlist — please try again.');
+      setTimeout(() => setError(null), 3500);
     }
   }
 
@@ -1366,8 +1437,9 @@ function AppShell() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain: q }),
+        signal: AbortSignal.timeout(15_000),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(
           res.status === 404
@@ -1418,8 +1490,12 @@ function AppShell() {
           setResult((r) => (r ? { ...r, enriching: false } : r));
         }
       }
-    } catch {
-      setError('Network error — please try again.');
+    } catch (e) {
+      setError(
+        e instanceof Error && e.name === 'TimeoutError'
+          ? 'The analysis took too long to respond.'
+          : 'Network error — please try again.'
+      );
       setLoading(false);
     }
   }
@@ -1541,14 +1617,6 @@ function AppShell() {
         {/* Top bar */}
         {view === 'home' ? (
           <div className="flex items-center justify-end gap-3 px-6 py-3">
-            <button className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900">
-              <PersonIcon width={13} height={13} />
-              Invite teammates
-            </button>
-            <button className="relative rounded-lg p-1.5 text-gray-400 hover:text-gray-200" aria-label="Notifications">
-              <BellIcon width={16} height={16} />
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
-            </button>
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/20 text-[11px] font-bold text-indigo-300 ring-1 ring-indigo-500/30">
               {emailInitials(user?.email)}
             </span>
@@ -1614,8 +1682,16 @@ function AppShell() {
           {view === 'search' && (
           <>
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700 mb-6">
-              {error}
+            <div className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              <span>{error}</span>
+              {domain.trim() && (
+                <button
+                  onClick={() => runAnalyze(domain.trim())}
+                  className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  Retry
+                </button>
+              )}
             </div>
           )}
 
@@ -1724,7 +1800,14 @@ function AppShell() {
                       onClick={() => setSaveOpen((s) => !s)}
                       className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
-                      {savedTo ? `✓ Saved to ${savedTo}` : 'Save Company'}
+                      {savedTo ? (
+                        <span className="inline-flex items-center gap-1.5 text-green-700">
+                          <CheckIcon width={13} height={13} />
+                          Saved to {savedTo}
+                        </span>
+                      ) : (
+                        'Save Company'
+                      )}
                     </button>
                     {saveOpen && (
                       <div className="absolute right-0 mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg z-20 py-1">
@@ -1747,7 +1830,10 @@ function AppShell() {
                     }`}
                   >
                     {copied ? (
-                      '✓ Copied'
+                      <span className="inline-flex items-center gap-1.5">
+                        <CheckIcon width={13} height={13} />
+                        Copied
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5">
                         <SparkleIcon width={13} height={13} />
@@ -1877,8 +1963,9 @@ function AppShell() {
                   sub={result.growth_momentum ? momentumSub(result.growth_momentum) : undefined}
                 >
                   {result.growth_momentum ? (
-                    <div className={`text-lg font-bold ${momentumColor(result.growth_momentum)}`}>
-                      {result.growth_momentum} {MOMENTUM_EMOJI[result.growth_momentum] ?? ''}
+                    <div className={`inline-flex items-center gap-1.5 text-lg font-bold ${momentumColor(result.growth_momentum)}`}>
+                      <span className={`h-2 w-2 rounded-full ${MOMENTUM_DOT[result.growth_momentum] ?? 'bg-gray-400'}`} />
+                      {result.growth_momentum}
                     </div>
                   ) : (
                     <Skeleton className="h-7 w-24" />
@@ -2183,7 +2270,12 @@ function AppShell() {
                   {/* Research Brief */}
                   {displayedBrief ? (
                     <Card
-                      title="✦ Research Brief"
+                      title={
+                        <span className="inline-flex items-center gap-1.5">
+                          <SparkleIcon width={13} height={13} className="text-indigo-400" />
+                          Research Brief
+                        </span>
+                      }
                       action={
                         <div className="flex items-center gap-2">
                           <select
@@ -2206,7 +2298,7 @@ function AppShell() {
                                 : 'bg-indigo-600 text-white hover:bg-indigo-700'
                             }`}
                           >
-                            {copied ? '✓ Copied' : '⧉ Copy'}
+                            {copied ? 'Copied' : 'Copy'}
                           </button>
                         </div>
                       }
@@ -2215,7 +2307,14 @@ function AppShell() {
                     </Card>
                   ) : (
                     enriching && (
-                      <Card title="✦ Research Brief">
+                      <Card
+                        title={
+                          <span className="inline-flex items-center gap-1.5">
+                            <SparkleIcon width={13} height={13} className="text-indigo-400" />
+                            Research Brief
+                          </span>
+                        }
+                      >
                         <div className="space-y-2">
                           <Skeleton className="h-3 w-32" />
                           <Skeleton className="h-3 w-full" />
@@ -2533,7 +2632,7 @@ function AppShell() {
                           copied ? 'bg-green-100 text-green-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                         }`}
                       >
-                        {copied ? '✓ Brief copied' : '✦ Copy Research Brief'}
+                        {copied ? 'Brief copied' : 'Copy Research Brief'}
                       </button>
                     )}
                   </Card>
@@ -2558,11 +2657,6 @@ function AppShell() {
             </div>
           )}
 
-          {!result && !loading && !error && (
-            <div className="text-center text-gray-400 py-24">
-              Enter a domain above to generate a GTM intelligence report.
-            </div>
-          )}
           </>
           )}
         </div>

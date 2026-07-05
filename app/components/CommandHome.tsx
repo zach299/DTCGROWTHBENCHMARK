@@ -117,11 +117,46 @@ export default function CommandHome({
     top_categories: string[];
   } | null>(null);
   const [firstVisit, setFirstVisit] = useState(false);
+  const [moversError, setMoversError] = useState(false);
+  const [listsError, setListsError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  // Each panel loads (and fails) independently — a broken endpoint shows a
+  // compact inline error in its own card and never blanks the homepage.
+  const loadMovers = () => {
+    setMoversError(false);
+    setMovers(null);
+    fetch('/api/top-movers', { signal: AbortSignal.timeout(15_000) })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        setMovers(Array.isArray(d.movers) ? d.movers : []);
+        setTotal((prev) => prev || (d.total ?? 0));
+      })
+      .catch(() => {
+        setMovers([]);
+        setMoversError(true);
+      });
+  };
+  const loadLists = () => {
+    setListsError(false);
+    setLists(null);
+    fetch('/api/watchlist', { signal: AbortSignal.timeout(15_000) })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => {
+        const items: WatchlistItem[] = Array.isArray(d.items) ? d.items : [];
+        const grouped = new Map<string, number>();
+        for (const it of items) grouped.set(it.list_name, (grouped.get(it.list_name) ?? 0) + 1);
+        setLists([...grouped.entries()].map(([name, count]) => ({ name, count })));
+      })
+      .catch(() => {
+        setLists([]);
+        setListsError(true);
+      });
+  };
+
   useEffect(() => {
-    fetch('/api/stats')
+    fetch('/api/stats', { signal: AbortSignal.timeout(15_000) })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d && typeof d.companies_tracked === 'number') {
@@ -130,22 +165,8 @@ export default function CommandHome({
         }
       })
       .catch(() => {});
-    fetch('/api/top-movers')
-      .then((r) => r.json())
-      .then((d) => {
-        setMovers(d.movers ?? []);
-        setTotal((prev) => prev || (d.total ?? 0));
-      })
-      .catch(() => setMovers([]));
-    fetch('/api/watchlist')
-      .then((r) => r.json())
-      .then((d) => {
-        const items: WatchlistItem[] = Array.isArray(d.items) ? d.items : [];
-        const grouped = new Map<string, number>();
-        for (const it of items) grouped.set(it.list_name, (grouped.get(it.list_name) ?? 0) + 1);
-        setLists([...grouped.entries()].map(([name, count]) => ({ name, count })));
-      })
-      .catch(() => setLists([]));
+    loadMovers();
+    loadLists();
     try {
       setFirstVisit(!localStorage.getItem('tam_has_queried'));
     } catch {
@@ -412,13 +433,25 @@ export default function CommandHome({
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
             </div>
+          ) : moversError ? (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <span>Couldn’t load Top Movers.</span>
+              <button
+                onClick={loadMovers}
+                className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+              >
+                Retry
+              </button>
+            </div>
           ) : preview.length === 0 ? (
             <EmptyState
+              compact
               icon={<TrendUpIcon width={18} height={18} />}
               title="No movers yet"
               body="Enrich companies under Imports to build the leaderboard."
             />
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -475,6 +508,7 @@ export default function CommandHome({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 
@@ -493,10 +527,23 @@ export default function CommandHome({
             </div>
             {lists == null ? (
               <Skeleton className="h-16 w-full" />
+            ) : listsError ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-600">
+                <span>Couldn’t load saved lists.</span>
+                <button
+                  onClick={loadLists}
+                  className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  Retry
+                </button>
+              </div>
             ) : lists.length === 0 ? (
-              <p className="py-3 text-[13px] text-gray-400">
-                No saved lists yet — build your first TAM list.
-              </p>
+              <EmptyState
+                compact
+                icon={<StarIcon width={16} height={16} />}
+                title="No saved lists yet"
+                body="Build your first TAM list and save accounts to see them here."
+              />
             ) : (
               <ul className="divide-y divide-gray-100">
                 {lists.map((l) => (
@@ -550,9 +597,9 @@ export default function CommandHome({
                 <div className="mt-0.5 text-[12px] text-gray-400">
                   Find growth signals while you browse.
                 </div>
-                <button className="mt-3 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500">
-                  Install
-                </button>
+                <span className="mt-3 inline-block rounded-full bg-white/[0.05] px-3 py-1 text-[11px] font-semibold text-gray-400 ring-1 ring-white/10">
+                  Coming soon
+                </span>
               </div>
               <div className="hidden shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 sm:block">
                 <div className="text-[10px] font-semibold text-gray-500">gymshark.com</div>
