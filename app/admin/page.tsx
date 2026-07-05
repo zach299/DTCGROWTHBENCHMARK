@@ -57,8 +57,6 @@ export default function AdminPage() {
   const [stats, setStats] = useState<WorkerStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [triggering, setTriggering] = useState(false);
-  const [triggerResult, setTriggerResult] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -79,35 +77,12 @@ export default function AdminPage() {
     return () => clearInterval(iv);
   }, [load]);
 
-  const triggerWorker = async () => {
-    setTriggering(true);
-    setTriggerResult(null);
-    try {
-      const res = await fetch('/api/worker/enrich');
-      const data = await res.json();
-      if (data.error) {
-        setTriggerResult(`Error: ${data.error}`);
-      } else if (data.skipped) {
-        setTriggerResult(`Skipped: ${data.reason}`);
-      } else {
-        setTriggerResult(
-          `Done — ${data.processed} domain(s) processed (${data.succeeded ?? 0} succeeded, ${data.failed ?? 0} failed)`,
-        );
-        await load();
-      }
-    } catch (e) {
-      setTriggerResult(`Error: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setTriggering(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold">Growth Signals — Admin</h1>
+            <h1 className="text-2xl font-bold">Tambourine — Admin</h1>
             <p className="text-zinc-500 text-sm mt-1">Background refresh worker &amp; enrichment coverage</p>
           </div>
           <div className="flex gap-3 items-center">
@@ -117,21 +92,11 @@ export default function AdminPage() {
             >
               Refresh
             </button>
-            <button
-              onClick={triggerWorker}
-              disabled={triggering}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded-lg px-4 py-1.5 font-medium transition"
-            >
-              {triggering ? 'Running…' : 'Trigger Worker Now'}
-            </button>
+            <span className="text-zinc-500 text-xs">
+              Enrichment runs daily via GitHub Actions (“Enrich Top 50k Brands”) — trigger extra runs from the Actions tab.
+            </span>
           </div>
         </div>
-
-        {triggerResult && (
-          <div className="mb-6 bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm text-zinc-300">
-            {triggerResult}
-          </div>
-        )}
 
         {error && (
           <div className="mb-6 bg-red-950 border border-red-800 rounded-lg px-4 py-3 text-sm text-red-300">
