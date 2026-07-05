@@ -262,11 +262,14 @@ export async function POST(request: Request) {
       historyPromise,
     ]);
 
-    // Mark as priority so the nightly worker refreshes viewed brands within 24h.
-    supabase
-      .from('domain_priority')
-      .upsert({ domain: company.domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' })
-      .then(undefined, () => {});
+    // Mark as priority so the nightly worker refreshes viewed brands within
+    // 24h. Awaited: serverless may freeze after the response, so fire-and-
+    // forget writes can silently vanish. It's a single-row upsert (~ms).
+    try {
+      await supabase
+        .from('domain_priority')
+        .upsert({ domain: company.domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' });
+    } catch { /* non-fatal */ }
 
     const historyRows = historyRes.data ?? [];
     return NextResponse.json({

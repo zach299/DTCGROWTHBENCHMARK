@@ -129,11 +129,13 @@ export async function POST(request: Request) {
       });
     }
 
-    // Viewed via extension → priority refresh within 24h.
-    supabase
-      .from('domain_priority')
-      .upsert({ domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' })
-      .then(undefined, () => {});
+    // Viewed via extension → priority refresh within 24h. Awaited: serverless
+    // may freeze after the response, losing un-awaited writes.
+    try {
+      await supabase
+        .from('domain_priority')
+        .upsert({ domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' });
+    } catch { /* non-fatal */ }
 
     return NextResponse.json({
       domain,
