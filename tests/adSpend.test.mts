@@ -52,3 +52,39 @@ test('formatSpend', () => {
   assert.equal(formatSpend(250_000), '$250k');
   assert.equal(formatSpend(1_500_000), '$1.5M');
 });
+
+// ── Edge-case fixture matrix ──
+const FIXTURES: [string, Parameters<typeof estimateMonthlySpend>[0], (r: ReturnType<typeof estimateMonthlySpend>) => void][] = [
+  ['0 ads → null', { metaAds: 0 }, (r) => assert.equal(r, null)],
+  ['1-5 ads → tiny band, low conf', { metaAds: 3, qualityAdjustedAds: 3, revenueRange: '$1M-$5M', paidIntensity: 'low' }, (r) => {
+    assert.ok(r); assert.ok(r.high <= 60_000, `high ${r.high}`); assert.equal(r.confidence, 'low');
+  }],
+  ['50 ads mid-market', { metaAds: 50, qualityAdjustedAds: 45, revenueRange: '$10M-$50M', paidIntensity: 'high' }, (r) => {
+    assert.ok(r); assert.ok(r.low >= 20_000 && r.high <= 600_000, `${r.label}`);
+  }],
+  ['500+ ads', { metaAds: 550, qualityAdjustedAds: 400, revenueRange: '$50M-$100M', paidIntensity: 'high' }, (r) => {
+    assert.ok(r); assert.ok(r.high <= 2_000_000, `${r.label}`); assert.equal(r.basis, 'blended');
+  }],
+  ['2,000+ catalog-heavy', { metaAds: 2400, qualityAdjustedAds: 700, revenueRange: '$100M-$250M', paidIntensity: 'high', creativeDiversityScore: 15 }, (r) => {
+    assert.ok(r); assert.ok(r.high <= 1_500_000, `${r.label}`);
+    assert.ok(r.explanation.some((e) => e.includes('catalog')), 'explains catalog discount');
+  }],
+  ['high revenue, low ads', { metaAds: 8, qualityAdjustedAds: 8, revenueRange: '$250M+', paidIntensity: 'low' }, (r) => {
+    assert.ok(r); assert.ok(r.high <= 800_000, `${r.label} should not balloon to revenue scale`);
+  }],
+  ['low revenue, high ads → revenue cap wins', { metaAds: 900, qualityAdjustedAds: 800, revenueRange: '$1M-$5M', paidIntensity: 'high' }, (r) => {
+    assert.ok(r); assert.ok(r.high <= ((3_000_000 * 0.2) / 12) * 1.7, `${r.label}`);
+    assert.ok(r.explanation.some((e) => e.includes('capped')), 'explains the cap');
+  }],
+];
+
+for (const [name, input, check] of FIXTURES) {
+  test(`fixture: ${name}`, () => check(estimateMonthlySpend(input)));
+}
+
+test('every estimate carries basis + non-empty explanation', () => {
+  const r = estimateMonthlySpend({ metaAds: 40, revenueRange: '$10M-$50M', paidIntensity: 'medium' });
+  assert.ok(r);
+  assert.ok(['blended', 'ads_only'].includes(r.basis));
+  assert.ok(r.explanation.length >= 2);
+});

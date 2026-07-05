@@ -51,7 +51,7 @@ test('describeFilters produces readable chips', () => {
 
 test('buildReason never returns empty and handles nulls', () => {
   assert.ok(buildReason({}).length > 0);
-  const r = buildReason({ metaAds: 118, realCreativeScore: 67, momentum: 'Accelerating', spend: { low: 300_000, high: 650_000, label: '$300k – $650k', confidence: 'medium' } });
+  const r = buildReason({ metaAds: 118, realCreativeScore: 67, momentum: 'Accelerating', spend: { low: 300_000, high: 650_000, label: '$300k – $650k', confidence: 'medium', basis: 'blended', explanation: [] } });
   assert.ok(r.includes('118') || r.toLowerCase().includes('meta'));
   assert.ok(r.endsWith('.'));
 });
