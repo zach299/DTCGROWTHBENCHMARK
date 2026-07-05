@@ -165,7 +165,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
   const anyHistory = rows.some((m) => Array.isArray(m.history) && m.history.length >= 2);
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-[1200px] space-y-5">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Top Movers</h1>
         <p className="mt-0.5 text-sm text-gray-500">
@@ -207,13 +207,13 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
         )
       )}
 
-      {/* Sort / filter controls */}
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      {/* Toolbar: sort pills + filter selects share one row, one height, one radius */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         {SORTS.map((s) => (
           <button
             key={s.key}
             onClick={() => setSort(s.key)}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`inline-flex h-8 items-center rounded-lg px-3 font-medium transition-colors ${
               sort === s.key
                 ? 'bg-indigo-600 text-white'
                 : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
@@ -225,7 +225,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
         <select
           value={minRevM}
           onChange={(e) => setMinRevM(Number(e.target.value))}
-          className="ml-auto rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
+          className="ml-auto h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700"
           title="Minimum estimated revenue"
         >
           <option value={0}>Any revenue</option>
@@ -238,7 +238,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
           <select
             value={cat}
             onChange={(e) => setCat(e.target.value)}
-            className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700"
+            className="h-8 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700"
           >
             <option value="">All categories</option>
             {categories.map((c) => (
@@ -299,19 +299,20 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                   {anyChange && <th className="hidden px-3 py-2.5 text-right xl:table-cell">Δ 30d</th>}
                   {anyHistory && <th className="hidden px-3 py-2.5 xl:table-cell">Trend</th>}
                   <th className="hidden px-4 py-2.5 text-right lg:table-cell">Updated</th>
+                  <th className="w-8 px-2 py-2.5" aria-label="Open" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody>
                 {rows.map((m) => (
                   <tr
                     key={m.domain}
                     onClick={() => onSelect(m.domain)}
-                    className="cursor-pointer transition-colors hover:bg-gray-50"
+                    className="group h-[46px] cursor-pointer border-b border-white/5 text-[13px] transition-colors last:border-0 hover:bg-white/[0.03]"
                   >
-                    <td className="px-4 py-2.5 text-[13px] font-bold tabular-nums text-gray-400">
+                    <td className="px-4 py-2 font-bold tabular-nums text-gray-400">
                       #{m.rank}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         <span className="truncate font-semibold capitalize text-gray-900">{brand(m)}</span>
                         {m.percentile_top != null && m.percentile_top <= 5 && (
@@ -322,27 +323,27 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                       </div>
                       <div className="truncate text-[11px] text-gray-400">{m.domain}</div>
                     </td>
-                    <td className="hidden max-w-[140px] truncate px-3 py-2.5 text-xs text-gray-500 lg:table-cell">
+                    <td className="hidden max-w-[140px] truncate px-3 py-2 text-gray-500 lg:table-cell">
                       {m.primary_category ?? '—'}
                     </td>
-                    <td className="hidden whitespace-nowrap px-3 py-2.5 text-right text-xs text-gray-600 md:table-cell">
+                    <td className="hidden whitespace-nowrap px-3 py-2 text-right text-gray-600 md:table-cell">
                       {m.estimated_revenue_range && m.estimated_revenue_range !== 'Unknown'
                         ? m.estimated_revenue_range
                         : '—'}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
                       <SpendEstimateBadge estimate={m.spend_estimate} compact />
                     </td>
-                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-gray-900">
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900">
                       {m.active_meta_ads.toLocaleString()}
                     </td>
-                    <td className="hidden px-3 py-2.5 text-right tabular-nums text-gray-600 sm:table-cell">
+                    <td className="hidden px-3 py-2 text-right tabular-nums text-gray-600 sm:table-cell">
                       {m.growth_score ?? '—'}
                     </td>
-                    <td className={`hidden whitespace-nowrap px-3 py-2.5 text-xs font-semibold xl:table-cell ${MOMENTUM_TONE[m.growth_momentum ?? ''] ?? 'text-gray-400'}`}>
+                    <td className={`hidden whitespace-nowrap px-3 py-2 font-semibold xl:table-cell ${MOMENTUM_TONE[m.growth_momentum ?? ''] ?? 'text-gray-400'}`}>
                       {m.growth_momentum ?? '—'}
                     </td>
-                    <td className="hidden max-w-[300px] px-3 py-2.5 text-[12px] leading-snug text-gray-500 2xl:table-cell">
+                    <td className="hidden max-w-[300px] px-3 py-2 text-[12px] leading-snug text-gray-500 2xl:table-cell">
                       {buildReason({
                         metaAds: m.active_meta_ads,
                         realCreativeScore: m.real_creative_score,
@@ -354,7 +355,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                       })}
                     </td>
                     {anyChange && (
-                      <td className="hidden px-3 py-2.5 text-right text-xs tabular-nums xl:table-cell">
+                      <td className="hidden px-3 py-2 text-right tabular-nums xl:table-cell">
                         {m.change_30d != null ? (
                           <span className={m.change_30d >= 0 ? 'text-emerald-400' : 'text-red-400'}>
                             {m.change_30d > 0 ? '+' : ''}
@@ -366,14 +367,30 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                       </td>
                     )}
                     {anyHistory && (
-                      <td className="hidden px-3 py-2.5 xl:table-cell">
+                      <td className="hidden px-3 py-2 xl:table-cell">
                         {Array.isArray(m.history) && m.history.length >= 2 ? (
                           <MiniSparkline values={m.history} />
                         ) : null}
                       </td>
                     )}
-                    <td className="hidden whitespace-nowrap px-4 py-2.5 text-right text-[11px] text-gray-400 lg:table-cell">
+                    <td className="hidden whitespace-nowrap px-4 py-2 text-right text-[11px] text-gray-400 lg:table-cell">
                       {relativeTime(m.last_enriched_at)}
+                    </td>
+                    <td className="w-8 px-2 py-2 text-right">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                        className="ml-auto text-gray-500 opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
                     </td>
                   </tr>
                 ))}

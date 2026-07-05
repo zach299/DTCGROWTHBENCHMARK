@@ -1693,7 +1693,15 @@ function AppShell() {
           </div>
         )}
 
-        <div className={view === 'home' ? 'px-4 py-6 sm:px-6' : 'mx-auto max-w-6xl px-4 py-6 sm:px-6'}>
+        <div
+          className={
+            view === 'home'
+              ? 'px-4 py-6 sm:px-6'
+              : view === 'movers'
+                ? 'mx-auto max-w-[1200px] px-4 py-6 sm:px-6'
+                : 'mx-auto max-w-6xl px-4 py-6 sm:px-6'
+          }
+        >
           {view === 'home' && (
             <CommandHome
               onBuild={(q) => {
@@ -1840,7 +1848,7 @@ function AppShell() {
                     href={`https://${result.domain.replace(/^https?:\/\//, '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="inline-flex h-9 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
                     Visit Website
                   </a>
