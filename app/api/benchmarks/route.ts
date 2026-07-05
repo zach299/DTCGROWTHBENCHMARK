@@ -27,6 +27,18 @@ export async function GET() {
   }
 }
 
+// Cached variant — the row set only changes as the worker enriches, so a
+// 5-minute TTL is plenty and saves a full-table page-through per call.
+let rowCache: { at: number; rows: BenchRow[] } | null = null;
+export async function fetchAllEnrichedCached(
+  supabase: ReturnType<typeof createServiceClient>
+): Promise<BenchRow[]> {
+  if (rowCache && Date.now() - rowCache.at < TTL_MS) return rowCache.rows;
+  const rows = await fetchAllEnriched(supabase);
+  rowCache = { at: Date.now(), rows };
+  return rows;
+}
+
 // Shared loader: pull the lean columns needed for benchmarking, paging past the
 // 1000-row default so the whole enriched set is included.
 export async function fetchAllEnriched(

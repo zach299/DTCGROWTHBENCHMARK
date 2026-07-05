@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
 import { normalizeDomain } from '@/lib/utils/domain';
-import { fetchAllEnriched } from '../benchmarks/route';
+import { fetchAllEnrichedCached } from '../benchmarks/route';
 import { channelBenchmarks, rankOf, percentileTop, type BenchRow } from '@/lib/benchmarks';
 
 // A company's full ranking picture: overall Growth Rank, category rank, and
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const all = await fetchAllEnriched(supabase);
+    const all = await fetchAllEnrichedCached(supabase);
     const total = all.length;
     const peers: BenchRow[] = category ? all.filter((r) => r.primary_category === category) : [];
 
