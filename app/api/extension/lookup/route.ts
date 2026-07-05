@@ -28,6 +28,12 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'domain required' }, { status: 400 });
 
   const domain = normalizeDomain(parsed.data.domain);
+  // Reject non-hostnames before they pollute master_database (this endpoint is
+  // public and inserts every looked-up domain).
+  const VALID_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+  if (!domain || domain.length > 253 || !VALID_HOST.test(domain)) {
+    return NextResponse.json({ error: 'Invalid domain' }, { status: 400 });
+  }
   const supabase = createServiceClient();
   try {
     // Is this domain already a known company?
