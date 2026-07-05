@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { parseTamQuery, describeFilters, type TamFilters } from '@/lib/tamQuery';
 import { estimateMonthlySpend, revenueMidM, type SpendEstimate } from '@/lib/adSpend';
 import { buildReason, buildOutboundAngle } from '@/lib/reason';
+import { trendStatus } from '@/lib/trends';
 import { logger } from '@/lib/utils/logger';
 import { escapeIlike } from '@/lib/utils/sanitize';
 
@@ -29,6 +30,8 @@ interface TamAccount {
   growth_momentum: string | null;
   active_meta_ads: number | null;
   last_enriched_at: string | null;
+  snapshot_count: number;
+  trend_status: 'not_started' | 'tracking_started' | 'trend_ready';
   reason: string;
   outbound_angle: string;
   rank: number;
@@ -79,6 +82,22 @@ export async function POST(request: Request) {
       .not('growth_score', 'is', null);
     const totalTracked = totalTrackedRes.count ?? 0;
 
+    // Snapshot counts for candidate rows (chunked; powers trend-ready boost + chip).
+    const snapCounts = new Map<string, number>();
+    {
+      const candDomains = (rows ?? []).map((r) => r.domain as string);
+      for (let i = 0; i < candDomains.length; i += 500) {
+        const chunk = candDomains.slice(i, i + 500);
+        const { data: snaps } = await supabase
+          .from('domain_snapshots')
+          .select('domain')
+          .in('domain', chunk);
+        for (const row of snaps ?? []) {
+          snapCounts.set(row.domain as string, (snapCounts.get(row.domain as string) ?? 0) + 1);
+        }
+      }
+    }
+
     let accounts: TamAccount[] = (rows ?? []).map((r) => {
       const lps = Array.isArray(r.landing_pages) ? (r.landing_pages as string[]).length : 0;
       const spend = estimateMonthlySpend({
@@ -113,6 +132,8 @@ export async function POST(request: Request) {
         growth_momentum: (r.growth_momentum as string) ?? null,
         active_meta_ads: r.active_meta_ads != null ? Number(r.active_meta_ads) : null,
         last_enriched_at: (r.last_enriched_at as string) ?? null,
+        snapshot_count: snapCounts.get(r.domain as string) ?? 0,
+        trend_status: trendStatus(snapCounts.get(r.domain as string) ?? 0),
         reason: buildReason(reasonInputs),
         outbound_angle: buildOutboundAngle(name, reasonInputs),
         rank: 0,
@@ -142,6 +163,12 @@ export async function POST(request: Request) {
     if (f.sort === 'spend') {
       accounts.sort((a, b) => (b.spend_estimate?.high ?? 0) - (a.spend_estimate?.high ?? 0));
     }
+
+    // Until the corpus has deep history, surface trend-ready brands first
+    // within the chosen sort (stable partition, preserves relative order).
+    const ready = accounts.filter((a) => a.trend_status === 'trend_ready');
+    const rest = accounts.filter((a) => a.trend_status !== 'trend_ready');
+    accounts = [...ready, ...rest];
 
     accounts = accounts.slice(0, limit).map((a, i) => ({ ...a, rank: i + 1 }));
 

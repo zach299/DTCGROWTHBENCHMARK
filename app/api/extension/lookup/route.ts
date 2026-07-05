@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { trendStatus } from '@/lib/trends';
+import { recordPriorityView } from '@/lib/priority';
 import { logger } from '@/lib/utils/logger';
 import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
 import { buildOutboundAngle } from '@/lib/reason';
@@ -131,11 +132,7 @@ export async function POST(request: Request) {
 
     // Viewed via extension → priority refresh within 24h. Awaited: serverless
     // may freeze after the response, losing un-awaited writes.
-    try {
-      await supabase
-        .from('domain_priority')
-        .upsert({ domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' });
-    } catch { /* non-fatal */ }
+    await recordPriorityView(supabase, domain);
 
     return NextResponse.json({
       domain,

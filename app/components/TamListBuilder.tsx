@@ -35,6 +35,26 @@ export interface TamAccount {
   reason: string;
   outbound_angle: string;
   rank: number;
+  snapshot_count: number;
+  trend_status: 'not_started' | 'tracking_started' | 'trend_ready';
+}
+
+function TrendChip({ status, count }: { status: TamAccount['trend_status']; count: number }) {
+  if (status === 'trend_ready') {
+    return (
+      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-500 ring-1 ring-emerald-500/25">
+        Trend ✓ ({count})
+      </span>
+    );
+  }
+  if (status === 'tracking_started') {
+    return (
+      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-gray-500/10 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-400/25">
+        Tracking
+      </span>
+    );
+  }
+  return null;
 }
 
 interface TamResponse {
@@ -487,6 +507,9 @@ export default function TamListBuilder({
               {f}
             </span>
           ))}
+          <span className="w-full text-[11px] text-gray-400">
+            Trend-ready accounts shown first while history builds.
+          </span>
         </div>
       )}
 
@@ -527,6 +550,7 @@ export default function TamListBuilder({
                   <th className="hidden px-3 py-2.5 text-right md:table-cell">Est. Revenue</th>
                   <th className="px-3 py-2.5 text-right">Est. Mo. Spend</th>
                   <th className="px-3 py-2.5 text-right">Score</th>
+                  <th className="px-2 py-2.5">Trend</th>
                   <th className="hidden px-3 py-2.5 xl:table-cell">Momentum</th>
                   <th className="hidden px-3 py-2.5 text-right sm:table-cell">Meta Ads</th>
                   <th className="hidden min-w-[240px] px-3 py-2.5 lg:table-cell">Why interesting</th>
@@ -578,6 +602,9 @@ export default function TamListBuilder({
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-gray-900">
                       {a.growth_score ?? '—'}
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <TrendChip status={a.trend_status} count={a.snapshot_count} />
                     </td>
                     <td className="hidden whitespace-nowrap px-3 py-2.5 xl:table-cell">
                       {a.growth_momentum ? (

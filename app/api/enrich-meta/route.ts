@@ -197,7 +197,7 @@ export async function POST(request: Request) {
       revenueRange: revenue.range,
       paidIntensity,
     });
-    await writeSnapshot(supabase, domain, {
+    const snapshotWritten = await writeSnapshot(supabase, domain, {
       active_meta_ads: count,
       active_google_ads: googleAds,
       active_linkedin_ads: linkedinAds,
@@ -218,7 +218,7 @@ export async function POST(request: Request) {
       source: 'observed',
     });
 
-    return NextResponse.json({ ok: true, signals });
+    return NextResponse.json({ ok: true, signals, snapshot_written: snapshotWritten });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('enrich-meta failed', { domain, error: msg });

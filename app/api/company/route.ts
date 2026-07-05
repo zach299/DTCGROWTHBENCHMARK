@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
+import { recordPriorityView } from '@/lib/priority';
 import { logger } from '@/lib/utils/logger';
 import { trendStatus, getTrends, getTimeline } from '@/lib/trends';
 import { computeMomentum, revenueRange } from '@/lib/intelligence';
@@ -242,7 +243,7 @@ export async function POST(request: Request) {
     const historyPromise = supabase
       .from('domain_snapshots')
       .select(
-        'snapshot_date, active_meta_ads, active_google_ads, active_linkedin_ads, landing_pages_count, growth_score, growth_momentum'
+        'snapshot_date, active_meta_ads, active_google_ads, active_linkedin_ads, landing_pages_count, growth_score, growth_momentum, source, run_id'
       )
       .eq('domain', company.domain)
       .order('snapshot_date', { ascending: true })
@@ -265,11 +266,7 @@ export async function POST(request: Request) {
     // Mark as priority so the nightly worker refreshes viewed brands within
     // 24h. Awaited: serverless may freeze after the response, so fire-and-
     // forget writes can silently vanish. It's a single-row upsert (~ms).
-    try {
-      await supabase
-        .from('domain_priority')
-        .upsert({ domain: company.domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' });
-    } catch { /* non-fatal */ }
+    await recordPriorityView(supabase, company.domain);
 
     const historyRows = historyRes.data ?? [];
     return NextResponse.json({

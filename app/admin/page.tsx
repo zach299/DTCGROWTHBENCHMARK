@@ -3,6 +3,49 @@
 import { useEffect, useState, useCallback } from 'react';
 import Skeleton from '@/app/components/Skeleton';
 
+interface SnapshotStats {
+  total_snapshots: number;
+  domains_with_snapshots: number;
+  brands_zero_snapshots: number;
+  brands_one_snapshot: number;
+  brands_trend_ready: number;
+  brands_deep_history: number;
+  trend_ready_top100: number;
+  trend_ready_top1000: number;
+  trend_ready_viewed: number;
+  viewed_total: number;
+}
+
+interface LastRun {
+  notes: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  processed: number | null;
+  succeeded: number | null;
+  failed: number | null;
+}
+
+interface RunNotes {
+  runner?: string;
+  snapshots_written?: number;
+  priority_processed?: number;
+  no_ads?: number;
+  partial?: boolean;
+}
+
+// `notes` may be a JSON object string from newer runs, or plain text from
+// older rows — parse defensively and fall back to raw text.
+function parseNotes(notes: string | null | undefined): { parsed: RunNotes | null; raw: string | null } {
+  if (!notes) return { parsed: null, raw: null };
+  try {
+    const p = JSON.parse(notes);
+    if (p && typeof p === 'object' && !Array.isArray(p)) return { parsed: p as RunNotes, raw: null };
+  } catch {
+    /* plain text */
+  }
+  return { parsed: null, raw: notes };
+}
+
 interface WorkerStats {
   total_brands: number;
   enriched_ever: number;
@@ -27,6 +70,39 @@ interface WorkerStats {
   };
   refresh_window_days: number;
   generated_at: string;
+  snapshots?: SnapshotStats | null;
+  last_run?: LastRun | null;
+  cadence?: string;
+}
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  const t = new Date(iso);
+  return Number.isFinite(t.getTime()) ? t.toLocaleString() : '—';
+}
+
+function fmtDuration(startIso: string | null, endIso: string | null): string {
+  if (!startIso || !endIso) return '—';
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function CohortRow({ label, ready, total }: { label: string; ready: number; total: number }) {
+  const pct = total > 0 ? (ready / total) * 100 : 0;
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-zinc-400 text-xs uppercase tracking-widest">{label}</span>
+        <span className="text-sm font-semibold text-white tabular-nums">
+          {fmt(ready)}/{fmt(total)}
+        </span>
+      </div>
+      <Bar pct={pct} />
+    </div>
+  );
 }
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -190,6 +266,79 @@ export default function AdminPage() {
                 />
               </div>
             </section>
+
+            {stats.snapshots && (
+              <section className="mb-8">
+                <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Trend Readiness</h2>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                  <Stat label="0 Snapshots" value={fmt(stats.snapshots.brands_zero_snapshots)} sub="not started" />
+                  <Stat label="1 Snapshot" value={fmt(stats.snapshots.brands_one_snapshot)} sub="tracking started" />
+                  <Stat label="2+ Snapshots" value={fmt(stats.snapshots.brands_trend_ready)} sub="trend-ready" />
+                  <Stat label="7+ Snapshots" value={fmt(stats.snapshots.brands_deep_history)} sub="deep history" />
+                  <Stat label="Total Snapshots" value={fmt(stats.snapshots.total_snapshots)} sub={`${fmt(stats.snapshots.domains_with_snapshots)} domains`} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <CohortRow label="Top 100 movers trend-ready" ready={stats.snapshots.trend_ready_top100} total={100} />
+                  <CohortRow label="Top 1,000" ready={stats.snapshots.trend_ready_top1000} total={1000} />
+                  <CohortRow label="Viewed brands" ready={stats.snapshots.trend_ready_viewed} total={stats.snapshots.viewed_total} />
+                </div>
+              </section>
+            )}
+
+            {stats.last_run &&
+              (() => {
+                const run = stats.last_run;
+                const { parsed, raw } = parseNotes(run.notes);
+                const failed = run.failed ?? 0;
+                const stalled =
+                  !run.completed_at &&
+                  run.started_at != null &&
+                  Date.now() - new Date(run.started_at).getTime() > 8 * 3_600_000;
+                const partial = failed > 0 || Boolean(parsed?.partial);
+                const badge = partial
+                  ? { text: 'Partial', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/40' }
+                  : stalled
+                    ? { text: 'Did not finish', cls: 'bg-red-500/10 text-red-400 border-red-500/40' }
+                    : run.completed_at
+                      ? { text: 'Complete', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/40' }
+                      : { text: 'Running', cls: 'bg-zinc-500/10 text-zinc-400 border-zinc-600' };
+                return (
+                  <section className="mb-8">
+                    <div className="flex items-center gap-3 mb-3">
+                      <h2 className="text-xs uppercase tracking-widest text-zinc-500">Last Nightly Run</h2>
+                      <span className={`text-[11px] font-semibold border rounded-full px-2.5 py-0.5 ${badge.cls}`}>
+                        {badge.text}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <Stat
+                        label="Started"
+                        value={fmtDateTime(run.started_at)}
+                        sub={run.completed_at ? `ended ${fmtDateTime(run.completed_at)}` : 'not completed'}
+                      />
+                      <Stat label="Duration" value={fmtDuration(run.started_at, run.completed_at)} />
+                      <Stat
+                        label="Processed"
+                        value={fmt(run.processed ?? 0)}
+                        sub={`${fmt(run.succeeded ?? 0)} ok · ${fmt(failed)} failed`}
+                      />
+                      <Stat
+                        label="Snapshots Written"
+                        value={parsed?.snapshots_written != null ? fmt(parsed.snapshots_written) : '—'}
+                        sub={
+                          parsed?.priority_processed != null
+                            ? `${fmt(parsed.priority_processed)} priority processed`
+                            : undefined
+                        }
+                      />
+                    </div>
+                    <div className="text-zinc-500 text-xs mt-3">
+                      {stats.cadence && <span>Cadence: {stats.cadence}</span>}
+                      {raw && <span>{stats.cadence ? ' · ' : ''}{raw}</span>}
+                    </div>
+                  </section>
+                );
+              })()}
 
             <div className="text-zinc-600 text-xs text-right">
               Last updated {new Date(stats.generated_at).toLocaleTimeString()} · auto-refreshes every 30s

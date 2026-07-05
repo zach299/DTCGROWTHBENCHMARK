@@ -63,6 +63,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let totalDone = 0;
 let totalFailed = 0;
 let totalNoAds = 0;
+let snapshotsWritten = 0;
+let priorityProcessed = 0;
+let inPriorityPass = false;
 let lastDomain = '';
 const recentErrors = [];
 const t0 = Date.now();
@@ -128,6 +131,8 @@ async function enrichOne(row) {
       if (data.ok || data.signals) {
         lastDomain = row.domain;
         if ((data.signals?.active_meta_ads ?? 0) === 0) totalNoAds++;
+        if (data.snapshot_written) snapshotsWritten++;
+        if (inPriorityPass) priorityProcessed++;
         totalDone++;
         return;
       }
@@ -293,7 +298,9 @@ async function main() {
   const priority = await fetchPriorityBatch(300);
   if (priority.length > 0) {
     log(`Priority pass: ${priority.length} viewed/top-mover domains stale >24h`);
+    inPriorityPass = true;
     await runPool(priority, CONCURRENCY, enrichOne);
+    inPriorityPass = false;
     printProgress();
   }
 
@@ -322,11 +329,11 @@ async function main() {
     await runPool(batch, CONCURRENCY, enrichOne);
     loops++;
     if (jobId != null) {
-      supabase.from('enrichment_jobs').update({
+      await supabase.from('enrichment_jobs').update({
         domains_processed: totalDone + totalFailed,
         domains_successful: totalDone,
         domains_failed: totalFailed,
-      }).eq('job_id', jobId).then(() => {}, () => {});
+      }).eq('job_id', jobId);
     }
 
     // Log progress every minute or every 5 loops
@@ -344,6 +351,13 @@ async function main() {
         domains_processed: totalDone + totalFailed,
         domains_successful: totalDone,
         domains_failed: totalFailed,
+        notes: JSON.stringify({
+          runner: process.env.GITHUB_RUN_ID ? `gha-${process.env.GITHUB_RUN_ID}` : 'local',
+          snapshots_written: snapshotsWritten,
+          priority_processed: priorityProcessed,
+          no_ads: totalNoAds,
+          partial: totalFailed > 0 || totalDone + totalFailed === 0,
+        }),
       }).eq('job_id', jobId);
     } catch { /* best-effort */ }
   }

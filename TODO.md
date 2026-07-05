@@ -118,3 +118,31 @@ click ruggable/fleet feet → real 2-point line, no refresh needed.
 - enriched last 24h: 2,515 (healthy); today's 06:00 UTC run not yet fired.
 - Snapshots: 59,280 total; 0 brands at zero; trend_ready=21 (expect ~3k after today's run,
   which is the first with the priority pass + seed in place).
+
+## Hardening: serverless writes + RLS + snapshot integrity + observability
+**P1 fire-and-forget writes:** full audit — all route writes now awaited; view
+tracking extracted to lib/priority.recordPriorityView (awaited, best-effort,
+logged, tested: records views, swallows errors, never breaks page load).
+Worker job updates awaited.
+**P2 RLS posture (manually inspected pg_policy, not just advisors):** all 7
+public tables have RLS ENABLED with ZERO policies = default-deny for anon and
+authenticated. The browser anon key can only hit Supabase Auth. Every product
+read/write goes through Next API routes using the service-role key server-side.
+POLICY NOTE: if user-owned data (saved lists per user) moves client-side later,
+add owner-scoped policies (user_id = auth.uid()) instead of opening tables.
+**P3 snapshot integrity (SQL-verified):** 0 duplicate (domain,snapshot_date)
+rows (unique index enforced); 0 seed mismatches — every seed row equals its
+signal row's values and last_enriched_at::date; 0 non-'observed' rows.
+CAVEAT: seed rows carry derived fields (growth_score) as recomputed post-scrape;
+raw ad counts are from the original scrape. run_ids: seed-from-last-enrichment,
+gha-<run> (nightly), local-<pid>.
+**P4 trend readiness:** get_snapshot_stats() now reports cohort readiness
+(top-100 / top-1,000 / viewed); /api/tam returns snapshot_count + trend_status
+per row and surfaces trend-ready accounts first; chart labels mixed
+seed+observed series.
+**P5 observability:** worker writes JSON summary (snapshots_written,
+priority_processed, no_ads, partial) into enrichment_jobs.notes; admin shows
+last run with Complete/Partial/Did-not-finish badge — partial never shows green.
+**Verification gaps (env-blocked):** live worker batch + anon-key probe can't run
+from this sandbox (egress allowlist); covered by SQL inspection + unit tests.
+Next nightly run (06:00 UTC) is the live verification — check admin panel after.

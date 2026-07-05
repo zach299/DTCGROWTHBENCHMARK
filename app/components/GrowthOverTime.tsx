@@ -16,6 +16,8 @@ export interface SnapshotRow {
   growth_score: number | null;
   growth_momentum?: string | null;
   creative_score?: number | null;
+  source?: string;
+  run_id?: string;
 }
 
 type Metric = 'active_meta_ads' | 'growth_score' | 'est_spend';
@@ -157,6 +159,14 @@ export default function GrowthOverTime({
 
   const initialLoading = loading && safeHistory.length === 0;
 
+  // Mixed-source series: a seeded baseline row plus at least one other row.
+  const mixedSources = useMemo(
+    () =>
+      safeHistory.some((h) => h.run_id === 'seed-from-last-enrichment') &&
+      safeHistory.some((h) => h.run_id !== 'seed-from-last-enrichment'),
+    [safeHistory]
+  );
+
   return (
     <div className="min-h-[280px] rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       {/* Header row: title + metric toggle */}
@@ -280,6 +290,11 @@ export default function GrowthOverTime({
           <div className="min-h-[200px] w-full">
             <GrowthLineChart points={points} valueLabel={metricLabel} formatValue={format} />
           </div>
+          {mixedSources && (
+            <p className="mt-2 text-[11px] text-gray-400">
+              Includes baseline from first enrichment plus daily observed pulls.
+            </p>
+          )}
         </>
       )}
     </div>
