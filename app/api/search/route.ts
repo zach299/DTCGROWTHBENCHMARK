@@ -19,7 +19,18 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'query required' }, { status: 400 });
 
-  const q = parsed.data.query.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+  // Sanitize for PostgREST .ilike(): escape LIKE wildcards and strip filter
+  // grammar characters (`,()` can break out of the filter value entirely).
+  const q = parsed.data.query
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[,()*]/g, '')
+    .replace(/\\/g, '\\\\')
+    .replace(/[%_]/g, (m) => `\\${m}`)
+    .slice(0, 100);
+  if (!q) return NextResponse.json({ results: [] });
   const limit = Math.min(parsed.data.limit ?? 10, 25);
   const supabase = createServiceClient();
 
