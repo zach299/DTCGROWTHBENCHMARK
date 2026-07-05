@@ -57,3 +57,18 @@ deployments only — do not rely on it for production.
 ## Auth hardening (verified)
 - [x] Missing NEXT_PUBLIC_* env vars: client returns null, authEnabled=false, app renders without login (tests/authClient.test.mts)
 - [x] Production build passes locally with and without auth env (build inlines whatever is present; runtime guards cover both)
+
+## Brand-detail trend investigation (priority shift)
+**Found:**
+- domain_snapshots IS canonically keyed (0 www/protocol variants in table); ruggable.com resolves correctly.
+- ruggable.com has exactly 1 snapshot — "Tracking started" was honest data, not a lookup bug.
+  History only started compounding when bulk enrichment began writing snapshots (Jul 4).
+- REAL client bug: phase-2 enrichment refresh replaces report state and can clobber the
+  history the page already had → the flicker/"refresh changes the state" behavior.
+- Cadence: SKIP_DAYS=30 → bulk adds only ~1 snapshot/brand/month. Extension/UI views
+  refresh viewed brands every 7d, so brands people look at accumulate history 4x faster.
+  DECISION: keep 30d bulk cadence for cost (weekly 50k ≈ ~$2k/mo Apify); revisit with a
+  priority tier (top 5k weekly) if trend depth matters sooner.
+**Verified:** 40 tests green incl. new domain-canonicalization + trends-window suites.
+**Next (commit 2):** client hydration — canonical history fetched on report load, kept in
+separate state, never replaced by pending enrichment; specific loading copy; chart module polish.
