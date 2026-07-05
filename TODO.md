@@ -14,12 +14,12 @@ code (tests / tsc / build) before being checked off.
 ## P1 — Data correctness / security
 - [x] Apify token passed in URL — moved to Authorization header query string (leaks into proxy/CDN logs) — move to Authorization header
 - [x] `/api/rank` — now reuses 5-min cached rowset shared with /api/benchmarks on every request with no cache (unlike /api/benchmarks' 5-min cache) — cheap DoS, slow extension rank fetch
-- [ ] enrich-meta returns HTTP 200 on hard failure (ok:false) — intentional for the bulk loop but defeats monitoring; document or add ?strict=1
+- [x] enrich-meta hard failures now return 502 (body keeps ok:false shape; all callers verified)
 - [ ] Cached /api/analyze-domain hits still call writeSnapshot (dedupes per-day, so acceptable; revisit if hot domains cause write load)
 
 ## P2 — UX polish
 - [ ] Verify chart metric toggles hide when a series has no data (visual pass once more history accumulates)
-- [ ] Extension: confirm outbound-angle button hidden for domains with no signals
+- [x] Extension outbound-angle button verified hidden when angle is null (popup.js:408)
 - [x] Homepage stat cards — new /api/stats full-universe endpoint (5-min cache), CommandHome prefers it with movers fallback
 
 ## P3 — Code quality
@@ -31,3 +31,9 @@ code (tests / tsc / build) before being checked off.
 - Free-tier gating stays localStorage/per-user (no server enforcement until auth is mandatory).
 - `/api/worker/stats` stays unauthenticated (feeds public /admin page); wrapped in try/catch instead.
 - No new npm dependencies introduced; tests run on node:test with --experimental-strip-types.
+
+## Adversarial pass 2 (found + fixed)
+- [x] Public /api/extension/lookup inserted arbitrary strings into master_database — hostname regex gate added (400 on junk)
+- [x] Admin "Trigger Worker Now" button broke when worker went fail-closed — replaced with GitHub Actions pointer
+- [ ] tests for lib/creativeQuality.ts (DPA detection) — next pass
+- [ ] TamListBuilder: verify CSV export escapes quotes/commas in reason text — next pass
