@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { logger } from '@/lib/utils/logger';
+import { logger } from './utils/logger.ts';
 
 export interface SnapshotMetrics {
   active_meta_ads: number;
