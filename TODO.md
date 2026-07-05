@@ -7,13 +7,13 @@ code (tests / tsc / build) before being checked off.
 ## P0 — Crashes / bugs
 - [x] Auth crash when NEXT_PUBLIC_SUPABASE_ANON_KEY missing (app dies on load) — fixed: null-safe client, authEnabled degrade (e068343)
 - [x] Ad-spend model produces absurd bands for catalog advertisers — rebuilt with diminishing returns + revenue anchor + tests (a947f6f)
-- [ ] `/api/search`: PostgREST filter injection — user text interpolated into .ilike() unescaped (`%`, `_`, `,`, `(`, `)` break the filter grammar / enable wildcard scans)
-- [ ] `/api/worker/stats`: no try/catch — any of 7 parallel queries rejecting returns an unhandled 500
-- [ ] `/api/bulk-job` + `/api/bulk-targets`: zod .parse() outside try — invalid input yields 500 instead of 400
+- [x] `/api/search`: PostgREST filter injection — escaped + length-capped (254c660) — user text interpolated into .ilike() unescaped (`%`, `_`, `,`, `(`, `)` break the filter grammar / enable wildcard scans)
+- [x] `/api/worker/stats`: no try/catch — wrapped, clean 500 JSON — any of 7 parallel queries rejecting returns an unhandled 500
+- [x] `/api/bulk-job` + `/api/bulk-targets`: safeParse -> 400 — invalid input yields 500 instead of 400
 
 ## P1 — Data correctness / security
-- [ ] Apify token passed in URL query string (leaks into proxy/CDN logs) — move to Authorization header
-- [ ] `/api/rank` loads the entire enriched table on every request with no cache (unlike /api/benchmarks' 5-min cache) — cheap DoS, slow extension rank fetch
+- [x] Apify token passed in URL — moved to Authorization header query string (leaks into proxy/CDN logs) — move to Authorization header
+- [x] `/api/rank` — now reuses 5-min cached rowset shared with /api/benchmarks on every request with no cache (unlike /api/benchmarks' 5-min cache) — cheap DoS, slow extension rank fetch
 - [ ] enrich-meta returns HTTP 200 on hard failure (ok:false) — intentional for the bulk loop but defeats monitoring; document or add ?strict=1
 - [ ] Cached /api/analyze-domain hits still call writeSnapshot (dedupes per-day, so acceptable; revisit if hot domains cause write load)
 
@@ -23,7 +23,7 @@ code (tests / tsc / build) before being checked off.
 - [ ] Homepage stat cards derive from top-300 ranked set, not full universe — consider a /api/stats endpoint
 
 ## P3 — Code quality
-- [ ] No tests for lib/tamQuery.ts (NL parser) and lib/reason.ts — add node:test coverage
+- [x] Tests for lib/tamQuery.ts + lib/reason.ts (17 total tests green)
 - [ ] app/page.tsx still ~2,400 lines — further view extraction
 - [ ] maxDuration=300 on three routes exceeds Hobby-plan 60s cap — harmless on Pro; note only
 
