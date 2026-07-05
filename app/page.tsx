@@ -1314,6 +1314,37 @@ function AppShell() {
   const [wlCount, setWlCount] = useState<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Snapshot history has its OWN state slot, fetched from /api/company on
+  // every report load and never inherited from list-row state. Phase-2
+  // enrichment must never shrink or clear it — see runAnalyze.
+  const [history, setHistory] = useState<SnapshotRow[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRefreshFailed, setHistoryRefreshFailed] = useState(false);
+  // Monotonic sequence: a newer runAnalyze invalidates any in-flight history
+  // writes from an older one (fast domain switches, slow enrichment).
+  const historySeq = useRef(0);
+
+  // Re-fetch history once after enrichment settles; only replace the current
+  // array when the fresh one is at least as long (enrichment may have written
+  // today's snapshot — but a partial/failed read must not shrink the chart).
+  async function refreshHistory(q: string, seq: number) {
+    try {
+      const res = await fetch('/api/company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: q }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const fresh: SnapshotRow[] = Array.isArray(data.history) ? data.history : [];
+      if (seq !== historySeq.current) return;
+      setHistory((curr) => (fresh.length >= (curr?.length ?? 0) ? fresh : curr));
+    } catch {
+      if (seq === historySeq.current) setHistoryRefreshFailed(true);
+    }
+  }
+
   // Sidebar Watchlist badge — real count from the watchlist API.
   useEffect(() => {
     fetch('/api/watchlist', { signal: AbortSignal.timeout(15_000) })
@@ -1431,6 +1462,12 @@ function AppShell() {
     setResult(null);
     setShowRaw(false);
     setCopied(false);
+    // Fresh history slot for this report load — never carried over from a
+    // previous report or a list row.
+    const seq = ++historySeq.current;
+    setHistory(null);
+    setHistoryLoading(true);
+    setHistoryRefreshFailed(false);
     try {
       // Phase 1: instant company + cached analysis (+ trends).
       const res = await fetch('/api/company', {
@@ -1441,12 +1478,17 @@ function AppShell() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (seq === historySeq.current) setHistoryLoading(false);
         setError(
           res.status === 404
             ? `"${data.domain ?? q}" was not found in the database.`
             : data.error || 'Something went wrong.'
         );
         return;
+      }
+      if (seq === historySeq.current) {
+        setHistory(Array.isArray(data.history) ? data.history : []);
+        setHistoryLoading(false);
       }
 
       const base: AnalysisResult = {
@@ -1475,19 +1517,25 @@ function AppShell() {
           const fresh = await enrichRes.json();
           if (enrichRes.ok) {
             // The enrichment response doesn't carry snapshot history or the
-            // spend estimate — keep them from phase 1.
+            // spend estimate — keep them from phase 1. History lives in its
+            // own slot and is NEVER replaced from this response; instead we
+            // re-fetch it once (enrichment may have written today's snapshot).
             setResult({
               ...fresh,
               history: fresh.history ?? base.history,
               spend_estimate: fresh.spend_estimate ?? base.spend_estimate,
               enriching: false,
             });
+            await refreshHistory(q, seq);
           } else {
-            // keep phase-1 view; just stop the enriching indicator
+            // keep phase-1 view (chart included); just stop the enriching
+            // indicator and flag the inline refresh-failed note.
             setResult((r) => (r ? { ...r, enriching: false } : r));
+            if (seq === historySeq.current) setHistoryRefreshFailed(true);
           }
         } catch {
           setResult((r) => (r ? { ...r, enriching: false } : r));
+          if (seq === historySeq.current) setHistoryRefreshFailed(true);
         }
       }
     } catch (e) {
@@ -1497,6 +1545,7 @@ function AppShell() {
           : 'Network error — please try again.'
       );
       setLoading(false);
+      if (seq === historySeq.current) setHistoryLoading(false);
     }
   }
 
@@ -1973,8 +2022,16 @@ function AppShell() {
                 </MetricCard>
               </div>
 
-              {/* Growth Over Time — snapshot history chart */}
-              {result.history != null && <GrowthOverTime history={result.history} />}
+              {/* Growth Over Time — snapshot history chart. History comes from
+                  its dedicated slot (fetched fresh from /api/company on every
+                  report load), never from the enrichment response. */}
+              <GrowthOverTime
+                history={history}
+                loading={historyLoading}
+                refreshing={enriching}
+                refreshFailed={historyRefreshFailed}
+              />
+
 
               {/* Bottom 3-column grid: Benchmarks · Paid Media Quality · Growth Narrative */}
               {(rankInfo?.rank != null || result.paid_media_quality || result.growth_narrative) && (
