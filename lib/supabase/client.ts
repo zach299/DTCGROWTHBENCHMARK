@@ -8,15 +8,21 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 // the URL hash are picked up automatically.
 let browserClient: SupabaseClient | null = null;
 
-export function getSupabaseBrowserClient(): SupabaseClient {
+/** True when the browser auth client can be created (env vars present at build). */
+export function isAuthConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
+
+/**
+ * Returns the browser Supabase client, or null when NEXT_PUBLIC_SUPABASE_URL /
+ * NEXT_PUBLIC_SUPABASE_ANON_KEY are not configured. NEVER throws — a missing
+ * env var must degrade to "auth disabled", not crash the whole app shell.
+ */
+export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (browserClient) return browserClient;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error(
-      'Missing Supabase configuration: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment.'
-    );
-  }
+  if (!url || !key) return null;
   browserClient = createClient(url, key, {
     auth: {
       persistSession: true,

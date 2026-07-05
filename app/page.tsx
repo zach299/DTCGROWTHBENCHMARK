@@ -1160,7 +1160,9 @@ function SettingsView() {
     if (!user?.email || resetState === 'sending') return;
     setResetState('sending');
     try {
-      const { error } = await getSupabaseBrowserClient().auth.resetPasswordForEmail(user.email, {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return;
+      const { error } = await sb.auth.resetPasswordForEmail(user.email, {
         redirectTo: window.location.origin,
       });
       setResetState(error ? 'error' : 'sent');
@@ -1221,9 +1223,11 @@ function SettingsView() {
 }
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, authEnabled } = useAuth();
   if (authLoading) return <AuthLoader />;
-  if (!user) return <AuthScreen />;
+  // When auth env vars aren't configured, run the app without a login wall
+  // rather than dead-ending the whole product.
+  if (authEnabled && !user) return <AuthScreen />;
   return <AppShell />;
 }
 

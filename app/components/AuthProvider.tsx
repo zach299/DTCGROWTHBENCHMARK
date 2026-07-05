@@ -7,21 +7,32 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  /** False when NEXT_PUBLIC_SUPABASE_ANON_KEY isn't configured — the app runs without login. */
+  authEnabled: boolean;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
+  authEnabled: true,
   signOut: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authEnabled, setAuthEnabled] = useState(true);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      // Auth env vars not configured — never block the app.
+      setAuthEnabled(false);
+      setUser(null);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
 
     supabase.auth
@@ -52,12 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await getSupabaseBrowserClient().auth.signOut();
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) await supabase.auth.signOut();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, loading, authEnabled, signOut }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

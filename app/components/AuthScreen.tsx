@@ -70,6 +70,13 @@ export default function AuthScreen() {
     setError(null);
     setGoogleSubmitting(true);
     const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setError('Sign-in is not configured yet (missing Supabase keys in the deployment).');
+      setSubmitting(false);
+      setMagicSubmitting(false);
+      setGoogleSubmitting(false);
+      return;
+    }
     try {
       const { error: err } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -96,6 +103,13 @@ export default function AuthScreen() {
     }
     setSubmitting(true);
     const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setError('Sign-in is not configured yet (missing Supabase keys in the deployment).');
+      setSubmitting(false);
+      setMagicSubmitting(false);
+      setGoogleSubmitting(false);
+      return;
+    }
     try {
       if (mode === 'signin') {
         const { error: err } = await supabase.auth.signInWithPassword({
@@ -134,6 +148,13 @@ export default function AuthScreen() {
     }
     setMagicSubmitting(true);
     const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setError('Sign-in is not configured yet (missing Supabase keys in the deployment).');
+      setSubmitting(false);
+      setMagicSubmitting(false);
+      setGoogleSubmitting(false);
+      return;
+    }
     try {
       const { error: err } = await supabase.auth.signInWithOtp({
         email: email.trim(),
