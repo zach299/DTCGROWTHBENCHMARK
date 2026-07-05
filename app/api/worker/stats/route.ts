@@ -14,7 +14,17 @@ export async function GET() {
   const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString();
   const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
 
-  const [totalRes, enrichedRes, freshRes, recentDayRes, recentHourRes, top25kRes, top25kFreshRes] =
+  const [snapStatsRes, lastJobRes] = await Promise.all([
+      supabase.rpc('get_snapshot_stats'),
+      supabase
+        .from('enrichment_jobs')
+        .select('job_id, notes, started_at, completed_at, domains_processed, domains_successful, domains_failed')
+        .order('job_id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const [totalRes, enrichedRes, freshRes, recentDayRes, recentHourRes, top25kRes, top25kFreshRes] =
     await Promise.all([
       // Total Shopify brands in master_database
       supabase
@@ -77,8 +87,21 @@ export async function GET() {
   // Days to clear all 100k
   const daysToEnrichAll = last24h > 0 ? Math.ceil((total - enriched) / last24h) : null;
 
+  const lastJob = lastJobRes?.data ?? null;
   return NextResponse.json({
     total_brands: total,
+    snapshots: snapStatsRes?.data ?? null,
+    last_run: lastJob
+      ? {
+          notes: lastJob.notes,
+          started_at: lastJob.started_at,
+          completed_at: lastJob.completed_at,
+          processed: lastJob.domains_processed,
+          succeeded: lastJob.domains_successful,
+          failed: lastJob.domains_failed,
+        }
+      : null,
+    cadence: 'Daily at 06:00 UTC via GitHub Actions (top-50k rolling 30d; viewed brands + top-100 movers every 24h)',
     enriched_ever: enriched,
     fresh_within_window: fresh,
     stale_or_unenriched: queueDepth,

@@ -115,6 +115,7 @@ async function enrichOne(row) {
           facebook_url: row.facebook_url ?? null,
           company_name: row.company_name ?? null,
           source: 'worker-50k',
+          run_id: process.env.GITHUB_RUN_ID ? `gha-${process.env.GITHUB_RUN_ID}` : `local-${process.pid}`,
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -151,6 +152,59 @@ async function enrichOne(row) {
       await sleep(2000 * (attempt + 1));
     }
   }
+}
+
+// ── priority domains: viewed/searched brands + current top-100 movers ────────
+// These refresh on a 24h cadence regardless of the 30d bulk cycle.
+async function fetchPriorityBatch(limit) {
+  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+  const domains = new Set();
+
+  // Brands users viewed/searched (recorded by /api/company + extension lookup)
+  const { data: viewed } = await supabase
+    .from('domain_priority')
+    .select('domain')
+    .gte('last_viewed_at', new Date(Date.now() - 14 * 86_400_000).toISOString())
+    .limit(500);
+  for (const r of viewed ?? []) domains.add(r.domain);
+
+  // Current top-100 by growth score (what Top Movers shows)
+  const { data: top } = await supabase
+    .from('company_meta_signals')
+    .select('domain')
+    .not('growth_score', 'is', null)
+    .order('growth_score', { ascending: false })
+    .limit(100);
+  for (const r of top ?? []) domains.add(r.domain);
+
+  if (domains.size === 0) return [];
+  const list = [...domains];
+
+  // Only those not already refreshed in the last 24h
+  const stale = [];
+  for (let i = 0; i < list.length; i += 200) {
+    const chunk = list.slice(i, i + 200);
+    const { data: fresh } = await supabase
+      .from('company_meta_signals')
+      .select('domain')
+      .in('domain', chunk)
+      .gte('last_enriched_at', dayAgo);
+    const freshSet = new Set((fresh ?? []).map((r) => r.domain));
+    for (const d of chunk) if (!freshSet.has(d)) stale.push(d);
+  }
+
+  // Attach facebook_url seeds where available
+  const rows = [];
+  for (let i = 0; i < stale.length && rows.length < limit; i += 200) {
+    const chunk = stale.slice(i, i + 200);
+    const { data: seeds } = await supabase
+      .from('master_database')
+      .select('domain, facebook_url')
+      .in('domain', chunk);
+    const seedMap = new Map((seeds ?? []).map((r) => [r.domain, r.facebook_url]));
+    for (const d of chunk) rows.push({ domain: d, facebook_url: seedMap.get(d) ?? null, company_name: null });
+  }
+  return rows.slice(0, limit);
 }
 
 // ── fetch next batch ─────────────────────────────────────────────────────────
@@ -221,6 +275,25 @@ async function main() {
   const stats = await getDBStats();
   log(`DB state: ${stats.enriched} enriched ever | ${stats.fresh} fresh | ${stats.total} total brands`);
 
+  // Track this run in enrichment_jobs for admin visibility.
+  let jobId = null;
+  try {
+    const { data: jobRow } = await supabase
+      .from('enrichment_jobs')
+      .insert({ notes: `50k worker ${process.env.GITHUB_RUN_ID ? `gha-${process.env.GITHUB_RUN_ID}` : 'local'}` })
+      .select('job_id')
+      .single();
+    jobId = jobRow?.job_id ?? null;
+  } catch { /* job tracking is best-effort */ }
+
+  // Priority pass first: viewed brands + top-100 movers on a 24h cadence.
+  const priority = await fetchPriorityBatch(300);
+  if (priority.length > 0) {
+    log(`Priority pass: ${priority.length} viewed/top-mover domains stale >24h`);
+    await runPool(priority, CONCURRENCY, enrichOne);
+    printProgress();
+  }
+
   let loops = 0;
   let lastProgressLog = Date.now();
 
@@ -241,6 +314,13 @@ async function main() {
 
     await runPool(batch, CONCURRENCY, enrichOne);
     loops++;
+    if (jobId != null) {
+      supabase.from('enrichment_jobs').update({
+        domains_processed: totalDone + totalFailed,
+        domains_successful: totalDone,
+        domains_failed: totalFailed,
+      }).eq('job_id', jobId).then(() => {}, () => {});
+    }
 
     // Log progress every minute or every 5 loops
     if (Date.now() - lastProgressLog > 60_000 || loops % 5 === 0) {
@@ -250,6 +330,16 @@ async function main() {
   }
 
   // Final report
+  if (jobId != null) {
+    try {
+      await supabase.from('enrichment_jobs').update({
+        completed_at: new Date().toISOString(),
+        domains_processed: totalDone + totalFailed,
+        domains_successful: totalDone,
+        domains_failed: totalFailed,
+      }).eq('job_id', jobId);
+    } catch { /* best-effort */ }
+  }
   const elapsed = ((Date.now() - t0) / 60000).toFixed(1);
   const finalStats = await getDBStats();
   log('\n════════ WORKER COMPLETE ════════');

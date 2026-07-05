@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
+import { trendStatus } from '@/lib/trends';
 import { logger } from '@/lib/utils/logger';
 import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
 import { buildOutboundAngle } from '@/lib/reason';
@@ -128,8 +129,15 @@ export async function POST(request: Request) {
       });
     }
 
+    // Viewed via extension → priority refresh within 24h.
+    supabase
+      .from('domain_priority')
+      .upsert({ domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' })
+      .then(undefined, () => {});
+
     return NextResponse.json({
       domain,
+      trend_status: trendStatus(Array.isArray(history) ? history.length : 0),
       is_new: isNew,
       outbound_angle: outboundAngle,
       history,

@@ -41,48 +41,74 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export interface SnapshotExtras {
+  spend_low?: number | null;
+  spend_mid?: number | null;
+  spend_high?: number | null;
+  spend_confidence?: string | null;
+  run_id?: string | null;
+  source?: string; // 'observed' (default) — synthetic sources must label themselves
+}
+
 /**
- * Write one snapshot per domain per day. Never overwrites an existing day —
- * historical snapshots are immutable, so the dataset compounds over time.
+ * Write one snapshot per domain per day. Snapshots are IMMUTABLE and deduped
+ * by (domain, snapshot_date) via a unique index — value changes never skip a
+ * write, and races between concurrent enrichments are safe (ignoreDuplicates).
  */
 export async function writeSnapshot(
   supabase: SupabaseClient,
   domain: string,
   m: SnapshotMetrics,
-  rawMeta: unknown
-): Promise<void> {
+  rawMeta: unknown,
+  extras: SnapshotExtras = {}
+): Promise<boolean> {
   const snapshot_date = todayISO();
   try {
-    const { data: existing } = await supabase
-      .from('domain_snapshots')
-      .select('id')
-      .eq('domain', domain)
-      .eq('snapshot_date', snapshot_date)
-      .maybeSingle();
-    if (existing) return; // already snapshotted today
-
-    const { error } = await supabase.from('domain_snapshots').insert({
-      domain,
-      snapshot_date,
-      active_meta_ads: m.active_meta_ads,
-      active_google_ads: m.active_google_ads,
-      active_linkedin_ads: m.active_linkedin_ads,
-      landing_pages_count: m.landing_pages_count,
-      estimated_revenue: m.estimated_revenue,
-      revenue_range: m.revenue_range,
-      growth_score: m.growth_score,
-      growth_momentum: m.growth_momentum,
-      paid_media_intensity: m.paid_media_intensity,
-      creative_velocity: m.creative_velocity,
-      campaign_diversity: m.campaign_diversity,
-      raw_meta_data: rawMeta ?? null,
-    });
-    if (error) logger.error('snapshot insert failed', { error: error.message });
+    const { error } = await supabase.from('domain_snapshots').upsert(
+      {
+        domain,
+        snapshot_date,
+        active_meta_ads: m.active_meta_ads,
+        active_google_ads: m.active_google_ads,
+        active_linkedin_ads: m.active_linkedin_ads,
+        landing_pages_count: m.landing_pages_count,
+        estimated_revenue: m.estimated_revenue,
+        revenue_range: m.revenue_range,
+        growth_score: m.growth_score,
+        growth_momentum: m.growth_momentum,
+        paid_media_intensity: m.paid_media_intensity,
+        creative_velocity: m.creative_velocity,
+        campaign_diversity: m.campaign_diversity,
+        raw_meta_data: rawMeta ?? null,
+        spend_low: extras.spend_low ?? null,
+        spend_mid: extras.spend_mid ?? null,
+        spend_high: extras.spend_high ?? null,
+        spend_confidence: extras.spend_confidence ?? null,
+        run_id: extras.run_id ?? null,
+        source: extras.source ?? 'observed',
+      },
+      { onConflict: 'domain,snapshot_date', ignoreDuplicates: true }
+    );
+    if (error) {
+      logger.error('snapshot insert failed', { error: error.message });
+      return false;
+    }
+    return true;
   } catch (err) {
     logger.error('writeSnapshot failed', {
       error: err instanceof Error ? err.message : String(err),
     });
+    return false;
   }
+}
+
+export type TrendStatus = 'not_started' | 'tracking_started' | 'trend_ready';
+
+/** Trend readiness from an observed-snapshot count. */
+export function trendStatus(observedSnapshots: number): TrendStatus {
+  if (observedSnapshots >= 2) return 'trend_ready';
+  if (observedSnapshots === 1) return 'tracking_started';
+  return 'not_started';
 }
 
 function daysBetween(a: string, b: string): number {

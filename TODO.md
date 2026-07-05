@@ -85,3 +85,24 @@ separate state, never replaced by pending enrichment; specific loading copy; cha
 - Verified each: tsc 0 errors, 43/43 tests, production build green.
 - Manual browser click-through (ruggable.com from Top Movers etc.) still needs a human
   pass — automated layers (API shape, state flow, build) are covered by tests.
+
+## Observed-trend acceleration (priority correction — no synthetic history)
+**Cadence (documented):** GitHub Actions "Enrich Top 50k Brands", daily 06:00 UTC,
+up to 3,000 domains/run at concurrency 6; each domain refreshed when stale >30d.
+NEW: priority pass runs first each night — viewed/searched brands (domain_priority
+table, recorded by /api/company + extension lookup) and the current top-100 movers
+refresh on a 24h cadence (up to 300/run).
+**Snapshot writing:** every enrichment writes an immutable snapshot deduped by
+(domain, snapshot_date) UNIQUE index — value changes never skip a write; races safe
+via ignoreDuplicates. Snapshots now carry spend_low/mid/high, spend_confidence,
+run_id (gha-<run>), source='observed'.
+**Seed:** one-time SQL seeded a snapshot per enriched brand from its last-enrichment
+date (real observed values, source='observed', run_id='seed-from-last-enrichment').
+Result: 59,280 snapshots, 0 brands at zero, next daily run makes top brands 2-point
+trend_ready.
+**trend_status:** helper in lib/trends.ts (not_started / tracking_started /
+trend_ready), returned by /api/company and /api/extension/lookup.
+**Admin:** /api/worker/stats now returns snapshot distribution (0/1/2+/7+ via
+get_snapshot_stats()), last run row from enrichment_jobs, and the cadence string.
+**Verify after tonight's run:** brands_trend_ready should jump from 21 to ~3,000;
+click ruggable/fleet feet → real 2-point line, no refresh needed.

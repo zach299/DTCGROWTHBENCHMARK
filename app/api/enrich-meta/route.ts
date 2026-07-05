@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/utils/logger';
 import { normalizeCategory } from '@/lib/categories';
 import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
+import { estimateMonthlySpend } from '@/lib/adSpend';
 import { analyzeCreativeQuality } from '@/lib/creativeQuality';
 import { writeSnapshot } from '@/lib/trends';
 import { requireApiKey } from '@/lib/apiAuth';
@@ -23,6 +24,7 @@ const bodySchema = z.object({
   google_ads: z.number().nullable().optional(),
   linkedin_ads: z.number().nullable().optional(),
   source: z.string().nullable().optional(),
+  run_id: z.string().nullable().optional(),
 });
 
 function parseNum(v: unknown): number {
@@ -185,6 +187,16 @@ export async function POST(request: Request) {
 
     // Daily immutable snapshot — this is what powers growth-over-time charts.
     // Every enrichment (bulk worker, extension, UI) compounds the history.
+    const snapSpend = estimateMonthlySpend({
+      metaAds: count,
+      googleAds,
+      linkedinAds,
+      qualityAdjustedAds: quality.quality_adjusted_ads,
+      landingPages: lpCount,
+      creativeDiversityScore: quality.creative_diversity_score,
+      revenueRange: revenue.range,
+      paidIntensity,
+    });
     await writeSnapshot(supabase, domain, {
       active_meta_ads: count,
       active_google_ads: googleAds,
@@ -197,7 +209,14 @@ export async function POST(request: Request) {
       paid_media_intensity: paidIntensity,
       creative_velocity: velocityLabel(count),
       campaign_diversity: diversityLabel(lpCount),
-    }, meta.raw);
+    }, meta.raw, {
+      spend_low: snapSpend?.low ?? null,
+      spend_mid: snapSpend ? Math.round((snapSpend.low + snapSpend.high) / 2) : null,
+      spend_high: snapSpend?.high ?? null,
+      spend_confidence: snapSpend?.confidence ?? null,
+      run_id: parsed.data.run_id ?? null,
+      source: 'observed',
+    });
 
     return NextResponse.json({ ok: true, signals });
   } catch (err) {

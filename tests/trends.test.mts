@@ -45,3 +45,11 @@ test('getTimeline computes per-entry percent change and handles single row', asy
   assert.equal(one.length, 1);
   assert.equal(one[0].meta_change_pct, null);
 });
+
+test('trendStatus thresholds', async () => {
+  const { trendStatus } = await import('../lib/trends.ts');
+  assert.equal(trendStatus(0), 'not_started');
+  assert.equal(trendStatus(1), 'tracking_started');
+  assert.equal(trendStatus(2), 'trend_ready');
+  assert.equal(trendStatus(30), 'trend_ready');
+});

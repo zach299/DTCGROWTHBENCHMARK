@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/server';
 import { normalizeDomain, domainCandidates } from '@/lib/utils/domain';
 import { logger } from '@/lib/utils/logger';
-import { getTrends, getTimeline } from '@/lib/trends';
+import { trendStatus, getTrends, getTimeline } from '@/lib/trends';
 import { computeMomentum, revenueRange } from '@/lib/intelligence';
 import { estimateMonthlySpend } from '@/lib/adSpend';
 
@@ -262,13 +262,21 @@ export async function POST(request: Request) {
       historyPromise,
     ]);
 
+    // Mark as priority so the nightly worker refreshes viewed brands within 24h.
+    supabase
+      .from('domain_priority')
+      .upsert({ domain: company.domain, last_viewed_at: new Date().toISOString() }, { onConflict: 'domain' })
+      .then(undefined, () => {});
+
+    const historyRows = historyRes.data ?? [];
     return NextResponse.json({
       domain: company.domain,
       company,
       analysis,
       trends,
       timeline,
-      history: historyRes.data ?? [],
+      history: historyRows,
+      trend_status: trendStatus(historyRows.length),
       spend_estimate: spendEstimate,
       cache_age_days: cacheAgeDays != null ? Math.round(cacheAgeDays * 10) / 10 : null,
       cache_fresh: cacheFresh,

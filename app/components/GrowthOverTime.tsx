@@ -233,6 +233,10 @@ export default function GrowthOverTime({
               <span className="text-sm font-medium text-gray-500">{metricLabel}</span>
             </div>
             <div className="mt-1 text-xs text-gray-400">{fmtDate(points[0].date)}</div>
+            <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+              Next observed snapshot expected after the next daily top-50k pull. The real
+              trend line appears automatically at 2+ snapshots.
+            </p>
             {/* subtle baseline graphic */}
             <svg viewBox="0 0 320 28" className="mt-4 w-full" aria-hidden="true">
               <line x1="0" y1="20" x2="320" y2="20" stroke="currentColor" className="text-white/[0.08]" strokeDasharray="4 5" />
