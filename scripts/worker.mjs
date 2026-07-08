@@ -280,6 +280,22 @@ async function main() {
   log(`API: ${API_BASE} | skip if enriched within ${SKIP_DAYS}d`);
   log(`Pause: touch ${PAUSE_FILE} to pause, remove to resume\n`);
 
+  // Self-heal: remove claim rows that never got data (stranded by kills/
+  // failures) so their domains re-enter the queue instead of hiding for 30d.
+  try {
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const { count } = await supabase
+      .from('company_meta_signals')
+      .delete({ count: 'exact' })
+      .is('raw_meta_response', null)
+      .is('active_meta_ads', null)
+      .is('growth_score', null)
+      .lt('last_enriched_at', twoDaysAgo);
+    if (count) log(`Self-heal: released ${count} stranded empty claims back into the queue`);
+  } catch (e) {
+    log(`Self-heal skipped: ${e.message?.slice(0, 80)}`);
+  }
+
   const stats = await getDBStats();
   log(`DB state: ${stats.enriched} enriched ever | ${stats.fresh} fresh | ${stats.total} total brands`);
 
@@ -308,6 +324,13 @@ async function main() {
   let lastProgressLog = Date.now();
 
   while (totalDone < MAX_TOTAL) {
+    // Circuit breaker: if the first waves fail 100%, the upstream (Apify/API)
+    // is down — stop instead of claiming and failing thousands of domains.
+    if (totalFailed >= 25 && totalDone === 0) {
+      log('CIRCUIT BREAKER: 25+ consecutive failures with zero successes — aborting run.');
+      log(`Last errors: ${recentErrors.slice(-3).join(' | ')}`);
+      break;
+    }
     if ((Date.now() - t0) / 60000 > MAX_RUNTIME_MIN) {
       log(`Soft deadline (${MAX_RUNTIME_MIN}m) reached — exiting cleanly before CI timeout.`);
       break;

@@ -146,3 +146,17 @@ last run with Complete/Partial/Did-not-finish badge — partial never shows gree
 **Verification gaps (env-blocked):** live worker batch + anon-key probe can't run
 from this sandbox (egress allowlist); covered by SQL inspection + unit tests.
 Next nightly run (06:00 UTC) is the live verification — check admin panel after.
+
+## INCIDENT: enrichment down Jul 5-8 (fixed)
+**Symptom:** 0 successful enrichments after Jul 4 14:36; Jul 8 run failed 100/100.
+**Root cause:** Jul 5 change moved the Apify token from URL query to Authorization
+header; Apify's run-sync endpoint returned 403 on every call afterwards. REVERTED
+to the query-param form that ran ~15k successful scrapes (header kept too).
+**Collateral (cleaned):** claim-before-enrich rows with no data accumulated —
+45,946 empty claims deleted; 44,445 zero-value seed snapshots (seeded from those
+claims) deleted. Real corpus: ~14.8k enriched brands; queue is honest again.
+**Guards added:** worker self-heals stranded claims (>2d old, no data) at startup;
+circuit breaker aborts the run after 25 consecutive failures with zero successes
+(no more burning the whole batch when upstream is down).
+**Watch:** if the next run STILL 403s, it's Apify credits/billing — top up at
+apify.com (user action).
