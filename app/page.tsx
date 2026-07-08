@@ -1988,7 +1988,7 @@ function AppShell() {
                   )}
                 </MetricCard>
                 <MetricCard
-                  label="Est. Monthly Ad Spend"
+                  label="Est. Annual Ad Spend"
                   icon={<span className="text-[11px] font-bold text-amber-400 leading-none">$</span>}
                   sub={
                     spendEst ? (

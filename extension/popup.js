@@ -307,7 +307,7 @@ function spendRow(spend) {
   return `
     <div class="spend-row">
       <div class="spend-left">
-        <div class="spend-label">Est. Monthly Ad Spend</div>
+        <div class="spend-label">Est. Annual Ad Spend</div>
         <div class="spend-sub">Estimated from ad signals</div>
       </div>
       <div class="spend-right">

@@ -290,7 +290,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                   <th className="hidden px-3 py-2.5 lg:table-cell">Category</th>
                   <th className="hidden px-3 py-2.5 text-right md:table-cell">Est. Revenue</th>
                   <th className="px-3 py-2.5 text-right" title={SPEND_HELPER}>
-                    Est. Mo. Spend
+                    Est. Annual Spend
                   </th>
                   <th className="px-3 py-2.5 text-right">Meta Ads</th>
                   <th className="hidden px-3 py-2.5 text-right sm:table-cell">Score</th>

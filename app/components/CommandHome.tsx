@@ -113,7 +113,7 @@ export default function CommandHome({
   const [universe, setUniverse] = useState<{
     companies_tracked: number;
     growing_this_month: number;
-    est_monthly_spend_tracked: number;
+    est_annual_spend_tracked: number;
     top_categories: string[];
   } | null>(null);
   const [firstVisit, setFirstVisit] = useState(false);
@@ -203,7 +203,7 @@ export default function CommandHome({
     if (universe) {
       return {
         growing: universe.growing_this_month,
-        spendMid: universe.est_monthly_spend_tracked,
+        spendMid: universe.est_annual_spend_tracked,
         topCats: universe.top_categories,
       };
     }
@@ -384,7 +384,7 @@ export default function CommandHome({
                   <BarsIcon width={17} height={17} />
                 </span>
                 <div className="min-w-0">
-                  <div className="text-[11px] font-medium text-gray-500">Est. Ad Spend Tracked</div>
+                  <div className="text-[11px] font-medium text-gray-500">Est. Annual Ad Spend Tracked</div>
                   <div className="text-xl font-bold tracking-tight text-gray-900 tabular-nums">
                     {formatSpend(stats.spendMid)}+
                   </div>

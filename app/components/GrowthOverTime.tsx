@@ -40,7 +40,7 @@ function fmtDate(iso: string): string {
 
 // Extract a clean series for one metric: drop null/NaN, coerce numbers, sort
 // by date ascending, dedupe same-day (keep the latest value for the day).
-// Est. Monthly Spend is computed per snapshot as the estimateMonthlySpend
+// Est. Annual Spend is computed per snapshot as the estimateAdSpend
 // band midpoint from that snapshot's ad/landing-page fields.
 function seriesFor(history: SnapshotRow[], metric: Metric): ChartPoint[] {
   const raw = history
@@ -72,7 +72,7 @@ function seriesFor(history: SnapshotRow[], metric: Metric): ChartPoint[] {
 const METRIC_META: Record<Metric, { label: string; format: (v: number) => string }> = {
   active_meta_ads: { label: 'Active Meta Ads', format: (v) => Math.round(v).toLocaleString() },
   growth_score: { label: 'Growth Score', format: (v) => Math.round(v).toLocaleString() },
-  est_spend: { label: 'Est. Monthly Spend', format: (v) => formatSpend(v) },
+  est_spend: { label: 'Est. Annual Spend', format: (v) => formatSpend(v) },
 };
 
 const METRICS = Object.keys(METRIC_META) as Metric[];

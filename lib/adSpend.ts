@@ -1,20 +1,22 @@
-// Estimated monthly ad spend — a deliberately honest heuristic.
-//
-// We never see actual spend, so this models a RANGE from observable signals:
-// active ad volume (quality-adjusted where available), creative diversity,
-// landing-page breadth, revenue bucket, and paid-media intensity. Output is a
-// low/high band plus a confidence level; UI copy should always present it as
-// an estimate ("Estimated from ad volume, creative diversity, category, and
-// revenue signals.").
+// Estimated ANNUAL ad spend — calibrated to DTC reality: brands with a real
+// paid motion put roughly 20-40% of revenue into media annually. Where a brand
+// sits in that range is driven by its ad-volume-to-revenue ratio (more active
+// ads per $M of revenue = a more aggressive media mix), nudged by momentum and
+// gated by observed paid intensity. Displayed as a RANGE, never a point.
 
 export interface SpendEstimate {
-  low: number; // dollars / month
+  /** Annual dollars. */
+  low: number;
   high: number;
-  label: string; // "$100k – $250k"
+  /** e.g. "$70M – $100M" (annual). */
+  label: string;
+  /** Monthly equivalents for filters ("spending $100k+/mo"). */
+  monthly_low: number;
+  monthly_high: number;
   confidence: 'low' | 'medium' | 'high';
-  /** Which anchors produced the estimate. */
-  basis: 'blended' | 'ads_only';
-  /** Human-readable list of why the band/confidence landed where it did. */
+  basis: 'revenue_pct' | 'ads_only';
+  /** Share of revenue the midpoint represents (null for ads_only). */
+  pct_of_revenue: number | null;
   explanation: string[];
 }
 
@@ -22,11 +24,12 @@ export interface SpendInputs {
   metaAds: number;
   googleAds?: number | null;
   linkedinAds?: number | null;
-  qualityAdjustedAds?: number | null; // preferred over raw meta count when present
+  qualityAdjustedAds?: number | null; // preferred for the intensity ratio
   landingPages?: number | null;
   creativeDiversityScore?: number | null; // 0-100
   revenueRange?: string | null; // e.g. "$10M–$50M"
   paidIntensity?: string | null; // high | medium | low | none
+  momentum?: string | null; // Exploding | Accelerating | ...
 }
 
 // Midpoint of the revenue range string in $M (rough parse, tolerant of formats).
@@ -43,7 +46,7 @@ export function revenueMidM(range: string | null | undefined): number | null {
 }
 
 function roundBand(v: number): number {
-  // Round to a "clean" band edge so we never imply precision.
+  if (v >= 10_000_000) return Math.round(v / 1_000_000) * 1_000_000;
   if (v >= 1_000_000) return Math.round(v / 250_000) * 250_000;
   if (v >= 250_000) return Math.round(v / 50_000) * 50_000;
   if (v >= 50_000) return Math.round(v / 25_000) * 25_000;
@@ -61,81 +64,82 @@ export function formatSpend(v: number): string {
 }
 
 /**
- * Estimate monthly paid-media spend as a band.
+ * Estimate ANNUAL paid-media spend as a band.
  *
- * Two anchors, blended:
- *  1. Ad-volume anchor with DIMINISHING returns per ad — large ad counts are
- *     dominated by catalog/DPA variants, so the marginal ad implies far less
- *     budget than the first 25 hand-built creatives.
- *  2. Revenue anchor — DTC brands typically put ~8-12% of revenue into paid
- *     media; monthly budget ~= revenue * 10% / 12, scaled by observed paid
- *     intensity.
- * When both exist we take the geometric mean (log-scale midpoint) so neither
- * anchor can run away; the band is +/- around that midpoint. Ads-only
- * estimates get a wider band and lower confidence.
+ * Model: annual = revenue x pct x intensity, where pct runs 20% -> 40% driven
+ * by effective-ads-per-$M-revenue (log scale), +bump for accelerating/exploding
+ * momentum. Two guards keep it sane:
+ *  - per-ad ceiling: no brand spends more than ~$20k/mo per active ad, so a
+ *    handful of always-on ads can't inherit a mega-revenue budget;
+ *  - per-ad floor: real ads cost something (~$300/mo each minimum).
+ * Without a revenue signal we fall back to a tiered per-ad annual anchor with
+ * a wide band and low confidence.
  */
-export function estimateMonthlySpend(i: SpendInputs): SpendEstimate | null {
+export function estimateAdSpend(i: SpendInputs): SpendEstimate | null {
   const effectiveAds = i.qualityAdjustedAds != null && i.qualityAdjustedAds > 0
     ? i.qualityAdjustedAds
     : i.metaAds;
   const totalAds = effectiveAds + (i.googleAds ?? 0) * 0.8 + (i.linkedinAds ?? 0) * 1.5;
-
   if (totalAds <= 0) return null; // no observable paid activity — don't invent a number
 
-  // --- Anchor 1: tiered per-ad budget (diminishing returns) ---
-  // First 25 ads ~ $800/mo each (hand-built creative under active management),
-  // next 75 ~ $500, next 400 ~ $200, everything beyond ~ $60 (catalog tail).
-  const tiers: [number, number][] = [
-    [25, 800],
-    [75, 500],
-    [400, 200],
-    [Infinity, 60],
-  ];
-  let remaining = totalAds;
-  let adAnchor = 0;
-  for (const [size, rate] of tiers) {
-    const n = Math.min(remaining, size);
-    adAnchor += n * rate;
-    remaining -= n;
-    if (remaining <= 0) break;
-  }
-  // Heavy-catalog mixes imply even less per ad; strong diversity implies more.
-  const div = i.creativeDiversityScore;
-  if (div != null && div < 25) adAnchor *= 0.75;
-  if (div != null && div >= 60) adAnchor *= 1.15;
-  if ((i.landingPages ?? 0) >= 10) adAnchor *= 1.1;
-
-  // --- Anchor 2: revenue-based budget ---
-  const revM = revenueMidM(i.revenueRange);
-  const intensityScale =
-    i.paidIntensity === 'high' ? 1.25 : i.paidIntensity === 'medium' ? 1.0 : i.paidIntensity === 'low' ? 0.5 : 0.3;
-  const revAnchor = revM != null ? ((revM * 1_000_000 * 0.10) / 12) * intensityScale : null;
-
-  // --- Blend: geometric mean when both anchors exist ---
   const explanation: string[] = [
     `${Math.round(totalAds)} effective active ads across channels`,
   ];
   if (i.qualityAdjustedAds != null && i.qualityAdjustedAds > 0 && i.qualityAdjustedAds < i.metaAds) {
     explanation.push(`catalog/DPA volume discounted (${i.metaAds} raw → ${i.qualityAdjustedAds} effective)`);
   }
-  if (div != null && div < 25) explanation.push('low creative diversity narrows the band');
-  if (div != null && div >= 60) explanation.push('high creative diversity raises the band');
 
-  let mid: number;
+  const revM = revenueMidM(i.revenueRange);
+  let annualMid: number;
   let confidence: SpendEstimate['confidence'];
   let basis: SpendEstimate['basis'];
-  if (revAnchor != null && revAnchor > 0) {
-    mid = Math.sqrt(adAnchor * revAnchor);
-    basis = 'blended';
-    confidence = 'medium';
-    explanation.push(`anchored to revenue (${i.revenueRange}, ~10%/12 paid budget)`);
-    if (i.paidIntensity === 'high' && totalAds >= 50) {
-      confidence = 'high';
-      explanation.push('high paid intensity + revenue agreement → high confidence');
+  let pctOfRevenue: number | null = null;
+
+  if (revM != null && revM > 0) {
+    basis = 'revenue_pct';
+    // Ads-per-$M drives where in the 20-40% band the brand sits.
+    const adsPerM = totalAds / revM;
+    let pct = 0.20 + 0.05 * Math.log2(1 + adsPerM);
+    if (i.momentum === 'Exploding') { pct += 0.04; explanation.push('exploding momentum pushes toward the top of the range'); }
+    else if (i.momentum === 'Accelerating') pct += 0.02;
+    pct = Math.min(0.40, Math.max(0.18, pct));
+
+    const intensityScale =
+      i.paidIntensity === 'high' ? 1.0 : i.paidIntensity === 'medium' ? 0.75 : i.paidIntensity === 'low' ? 0.4 : 0.25;
+
+    annualMid = revM * 1_000_000 * pct * intensityScale;
+    pctOfRevenue = Math.round(pct * intensityScale * 1000) / 1000;
+    explanation.push(
+      `~${Math.round(pct * intensityScale * 100)}% of est. revenue (${i.revenueRange}) — media share scales with ads-per-$M (${adsPerM.toFixed(1)})`
+    );
+
+    // Per-ad ceiling/floor keep the revenue model honest at the extremes.
+    const ceiling = i.metaAds > 0 ? Math.max(i.metaAds, totalAds) * 20_000 * 12 : totalAds * 20_000 * 12;
+    if (annualMid > ceiling) {
+      annualMid = ceiling;
+      pctOfRevenue = null;
+      explanation.push('capped by ad volume — too few active ads to carry a revenue-scale budget');
     }
+    const floor = totalAds * 300 * 12;
+    if (annualMid < floor) annualMid = floor;
+
+    confidence = i.paidIntensity === 'high' && totalAds >= 50 ? 'high' : 'medium';
   } else {
-    mid = adAnchor;
     basis = 'ads_only';
+    // Tiered per-ad monthly anchor (diminishing returns), annualized.
+    const tiers: [number, number][] = [[25, 800], [75, 500], [400, 200], [Infinity, 60]];
+    let remaining = totalAds;
+    let monthly = 0;
+    for (const [size, rate] of tiers) {
+      const n = Math.min(remaining, size);
+      monthly += n * rate;
+      remaining -= n;
+      if (remaining <= 0) break;
+    }
+    const div = i.creativeDiversityScore;
+    if (div != null && div < 25) monthly *= 0.75;
+    if (div != null && div >= 60) monthly *= 1.15;
+    annualMid = monthly * 12;
     confidence = 'low';
     explanation.push('no revenue signal — ads-only estimate, wide band, low confidence');
   }
@@ -144,24 +148,23 @@ export function estimateMonthlySpend(i: SpendInputs): SpendEstimate | null {
     if (totalAds < 5) explanation.push('very low ad count — low confidence');
   }
 
-  // Hard ceiling: paid spend rarely exceeds ~20% of revenue / 12.
-  if (revM != null && mid > (revM * 1_000_000 * 0.2) / 12) {
-    mid = (revM * 1_000_000 * 0.2) / 12;
-    explanation.push('capped at ~20% of revenue / 12');
-  }
-
-  // Band width: tighter when both anchors agree, wider on ads-only.
-  const spreadLow = basis === 'blended' ? 0.6 : 0.45;
-  const spreadHigh = basis === 'blended' ? 1.6 : 2.2;
-  const low = Math.max(1_000, roundBand(mid * spreadLow));
-  const high = Math.max(low * 1.5, roundBand(mid * spreadHigh));
+  const spreadLow = basis === 'revenue_pct' ? 0.8 : 0.45;
+  const spreadHigh = basis === 'revenue_pct' ? 1.25 : 2.2;
+  const low = Math.max(3_000, roundBand(annualMid * spreadLow));
+  const high = Math.max(low * 1.2, roundBand(annualMid * spreadHigh));
 
   return {
     low,
     high,
     label: `${formatSpend(low)} – ${formatSpend(high)}`,
+    monthly_low: Math.round(low / 12),
+    monthly_high: Math.round(high / 12),
     confidence,
     basis,
+    pct_of_revenue: pctOfRevenue,
     explanation,
   };
 }
+
+/** @deprecated renamed — estimates are ANNUAL now. Kept for grep-ability. */
+export const estimateMonthlySpend = estimateAdSpend;

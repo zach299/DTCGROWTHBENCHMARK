@@ -50,6 +50,7 @@ export async function GET() {
               r.creative_diversity_score != null ? Number(r.creative_diversity_score) : null,
             revenueRange: (r.estimated_revenue_range as string) ?? null,
             paidIntensity: (r.ad_activity_level as string) ?? null,
+            momentum: momentum || null,
           });
           if (spend) spendMidSum += (spend.low + spend.high) / 2;
         }
@@ -70,7 +71,7 @@ export async function GET() {
       companies_tracked: tracked,
       growing_this_month: growing,
       companies_with_ads: withAds,
-      est_monthly_spend_tracked: Math.round(spendMidSum),
+      est_annual_spend_tracked: Math.round(spendMidSum),
       top_categories,
       generated_at: new Date().toISOString(),
     };

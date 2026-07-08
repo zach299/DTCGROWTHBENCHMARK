@@ -548,7 +548,7 @@ export default function TamListBuilder({
                   <th className="min-w-[180px] px-3 py-2.5">Company</th>
                   <th className="hidden px-3 py-2.5 lg:table-cell">Category</th>
                   <th className="hidden px-3 py-2.5 text-right md:table-cell">Est. Revenue</th>
-                  <th className="px-3 py-2.5 text-right">Est. Mo. Spend</th>
+                  <th className="px-3 py-2.5 text-right">Est. Annual Spend</th>
                   <th className="px-3 py-2.5 text-right">Score</th>
                   <th className="px-2 py-2.5">Trend</th>
                   <th className="hidden px-3 py-2.5 xl:table-cell">Momentum</th>

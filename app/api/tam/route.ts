@@ -109,6 +109,7 @@ export async function POST(request: Request) {
         creativeDiversityScore: r.creative_diversity_score != null ? Number(r.creative_diversity_score) : null,
         revenueRange: (r.estimated_revenue_range as string) ?? null,
         paidIntensity: (r.ad_activity_level as string) ?? null,
+        momentum: (r.growth_momentum as string) ?? null,
       });
       const reasonInputs = {
         metaAds: Number(r.active_meta_ads ?? 0),
@@ -151,10 +152,10 @@ export async function POST(request: Request) {
       });
     }
     if (f.spendMinMo != null) {
-      accounts = accounts.filter((a) => a.spend_estimate != null && a.spend_estimate.high >= (f.spendMinMo as number));
+      accounts = accounts.filter((a) => a.spend_estimate != null && a.spend_estimate.monthly_high >= (f.spendMinMo as number));
     }
     if (f.spendMaxMo != null) {
-      accounts = accounts.filter((a) => a.spend_estimate != null && a.spend_estimate.low <= (f.spendMaxMo as number));
+      accounts = accounts.filter((a) => a.spend_estimate != null && a.spend_estimate.monthly_low <= (f.spendMaxMo as number));
     }
     if (f.top1pct && totalTracked > 0) {
       const cut = Math.max(1, Math.ceil(totalTracked * 0.01));

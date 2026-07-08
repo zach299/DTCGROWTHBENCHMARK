@@ -51,7 +51,7 @@ test('describeFilters produces readable chips', () => {
 
 test('buildReason never returns empty and handles nulls', () => {
   assert.ok(buildReason({}).length > 0);
-  const r = buildReason({ metaAds: 118, realCreativeScore: 67, momentum: 'Accelerating', spend: { low: 300_000, high: 650_000, label: '$300k – $650k', confidence: 'medium', basis: 'blended', explanation: [] } });
+  const r = buildReason({ metaAds: 118, realCreativeScore: 67, momentum: 'Accelerating', spend: { low: 3_600_000, high: 7_800_000, label: '$3.6M – $7.8M', monthly_low: 300_000, monthly_high: 650_000, confidence: 'medium', basis: 'revenue_pct', pct_of_revenue: 0.25, explanation: [] } });
   assert.ok(r.includes('118') || r.toLowerCase().includes('meta'));
   assert.ok(r.endsWith('.'));
 });
