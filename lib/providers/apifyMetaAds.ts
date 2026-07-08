@@ -80,12 +80,13 @@ async function runActor(adLibraryUrl: string, count: number): Promise<Item[]> {
     period: '',
   };
 
-  // Token goes in the Authorization header, never the URL — query strings
-  // land in proxy/CDN/access logs and error traces.
+  // REVERTED 2026-07-08: the Authorization-header-only form started returning
+  // 403 for every run (100% failure since Jul 5). Token goes back in the query
+  // string — the form that ran ~15k successful scrapes. Header kept as well.
   const endpoint =
     `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items` +
     // This actor requires <= 512MB per input URL.
-    `?timeout=120&memory=512`;
+    `?token=${encodeURIComponent(token)}&timeout=120&memory=512`;
 
   // Retry transient failures (rate limits, 5xx, network blips) with backoff so a
   // momentary Apify hiccup doesn't fail an entire bulk batch. Auth/quota errors
