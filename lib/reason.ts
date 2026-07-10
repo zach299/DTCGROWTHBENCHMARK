@@ -2,7 +2,7 @@
 // built only from signals we actually have. This is the column that makes a
 // TAM list feel like intelligence instead of a spreadsheet.
 
-import type { SpendEstimate } from '@/lib/adSpend';
+import type { SpendEstimate } from './adSpend.ts';
 
 export interface ReasonInputs {
   metaAds?: number | null;
