@@ -70,8 +70,8 @@ function seriesFor(history: SnapshotRow[], metric: Metric): ChartPoint[] {
 }
 
 const METRIC_META: Record<Metric, { label: string; format: (v: number) => string }> = {
-  active_meta_ads: { label: 'Active Meta Ads', format: (v) => Math.round(v).toLocaleString() },
   growth_score: { label: 'Growth Score', format: (v) => Math.round(v).toLocaleString() },
+  active_meta_ads: { label: 'Active Meta Ads', format: (v) => Math.round(v).toLocaleString() },
   est_spend: { label: 'Est. Annual Spend', format: (v) => formatSpend(v) },
 };
 
@@ -119,7 +119,7 @@ export default function GrowthOverTime({
     return out;
   }, [safeHistory]);
 
-  const [metric, setMetric] = useState<Metric>('active_meta_ads');
+  const [metric, setMetric] = useState<Metric>('growth_score');
   const points = seriesByMetric[metric] ?? [];
   const { label: metricLabel, format } = METRIC_META[metric];
 

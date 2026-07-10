@@ -35,9 +35,13 @@ import type { Momentum } from '@/lib/intelligence';
 import { estimateMonthlySpend, type SpendEstimate } from '@/lib/adSpend';
 import Skeleton from '@/app/components/Skeleton';
 import MetricCard from '@/app/components/MetricCard';
-import SpendEstimateBadge, { SPEND_HELPER } from '@/app/components/SpendEstimateBadge';
+import SpendEstimateBadge from '@/app/components/SpendEstimateBadge';
 import GrowthOverTime, { type SnapshotRow } from '@/app/components/GrowthOverTime';
 import TopMoversView from '@/app/components/TopMoversView';
+import GrowthSignalsGrid from '@/app/components/GrowthSignalsGrid';
+import { buildSignalCategories } from '@/lib/signals';
+import { PERSONAS, buildPersonaTakeaways, isPersona, personaStorageKey, type Persona } from '@/lib/persona';
+import type { ReasonInputs } from '@/lib/reason';
 
 interface MetaAds {
   advertiser_name: string | null;
@@ -216,18 +220,6 @@ function scoreColor(s: number): string {
   if (s >= 70) return 'text-green-600';
   if (s >= 40) return 'text-yellow-600';
   return 'text-red-600';
-}
-function intensityLabel(signal: string): string {
-  if (signal === 'high') return 'High';
-  if (signal === 'medium') return 'Medium';
-  if (signal === 'low') return 'Low';
-  return 'None';
-}
-function intensitySub(signal: string): string {
-  if (signal === 'high') return 'Aggressive paid strategy';
-  if (signal === 'medium') return 'Steady paid presence';
-  if (signal === 'low') return 'Light paid activity';
-  return 'No paid activity detected';
 }
 function momentumSub(m: string): string {
   if (m === 'Exploding' || m === 'Accelerating') return 'Strong upward trajectory';
@@ -1583,6 +1575,57 @@ function AppShell() {
         })
       : null);
 
+  // Growth Signals — the 6-category composite view. Fed from the same signal
+  // data the report already has; renders even for zero-ad accounts.
+  const signalCategories = result
+    ? buildSignalCategories({
+        active_meta_ads: metaCount,
+        google_ads: adCount(result, 'Google'),
+        linkedin_ads: adCount(result, 'LinkedIn'),
+        quality_adjusted_ads: result.paid_media_quality?.quality_adjusted_ads ?? null,
+        real_creative_score: result.paid_media_quality?.real_creative_score ?? null,
+        creative_diversity_score: result.paid_media_quality?.creative_diversity_score ?? null,
+        dpa_share: result.paid_media_quality?.dpa_share ?? null,
+        ad_activity_level: result.paid_media_signal ?? result.meta_ads?.ad_activity_level ?? null,
+        landing_pages: result.meta_ads?.unique_landing_pages ?? [],
+        spend_label: spendEst?.label ?? null,
+      })
+    : [];
+  const liveSignals = signalCategories.filter((c) => c.status === 'live').length;
+  const soonSignals = signalCategories.length - liveSignals;
+  const scrollToSignals = () =>
+    document.getElementById('growth-signals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Persona lens for the Growth Narrative — initialized from the stored value
+  // (Settings owns persistence; switching here updates only this card).
+  const [persona, setPersona] = useState<Persona>('other');
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(personaStorageKey(user?.id));
+      if (isPersona(stored)) setPersona(stored);
+    } catch {
+      /* default 'other' */
+    }
+  }, [user?.id]);
+
+  const reasonInputs: ReasonInputs | null = result
+    ? {
+        metaAds: metaCount,
+        metaChangePct:
+          result.trends?.active_meta_ads?.[1]?.change_pct ??
+          result.trends?.active_meta_ads?.[0]?.change_pct ??
+          null,
+        realCreativeScore: result.paid_media_quality?.real_creative_score ?? null,
+        creativeDiversityScore: result.paid_media_quality?.creative_diversity_score ?? null,
+        dpaShare: result.paid_media_quality?.dpa_share ?? null,
+        momentum: result.growth_momentum ?? null,
+        growthScore: result.growth_score ?? null,
+        spend: spendEst,
+        landingPages: result.meta_ads?.unique_landing_pages?.length ?? null,
+      }
+    : null;
+  const personaTakeaways = reasonInputs ? buildPersonaTakeaways(persona, reasonInputs) : [];
+
   return (
     <div className="dark-app min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
@@ -1901,14 +1944,14 @@ function AppShell() {
                 </div>
               </div>
 
-              {/* Metric row */}
-              <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:grid-cols-3 xl:grid-cols-6 divide-x divide-y divide-gray-100 xl:divide-y-0">
+              {/* Metric row — score first, signals second */}
+              <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:grid-cols-3 xl:grid-cols-5 divide-x divide-y divide-gray-100 xl:divide-y-0">
                 <MetricCard
-                  label="Growth Rank"
+                  label="Growth Score"
                   icon={<BoltIcon width={11} height={11} className="text-indigo-400" />}
                   sub={
                     hasAnalysis && rankInfo?.rank
-                      ? `Score ${gScore} · of ${rankInfo.total.toLocaleString()} tracked`
+                      ? `Rank #${rankInfo.rank.toLocaleString()} of ${rankInfo.total.toLocaleString()} tracked`
                       : undefined
                   }
                   footer={
@@ -1924,35 +1967,33 @@ function AppShell() {
                 >
                   {!hasAnalysis ? (
                     <Skeleton className="h-8 w-16" />
-                  ) : rankInfo?.rank ? (
+                  ) : (
                     <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-semibold text-gray-900 tabular-nums">#{rankInfo.rank}</span>
-                      {rankInfo.percentile_top != null && (
+                      <span className={`text-2xl font-bold tabular-nums ${scoreColor(gScore)}`}>{gScore}</span>
+                      {rankInfo?.percentile_top != null ? (
                         <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">
                           Top {rankInfo.percentile_top}%
                         </span>
+                      ) : (
+                        <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
+                          {scoreLabel(gScore)}
+                        </span>
                       )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xl font-semibold ${scoreColor(gScore)}`}>{gScore}</span>
-                      <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
-                        {scoreLabel(gScore)}
-                      </span>
                     </div>
                   )}
                 </MetricCard>
                 <MetricCard
-                  label="Paid Media Intensity"
-                  icon={<BarsIcon width={11} height={11} className="text-violet-400" />}
-                  sub={hasAnalysis ? intensitySub(result.paid_media_signal ?? '') : undefined}
+                  label="Growth Momentum"
+                  icon={<TrendUpIcon width={11} height={11} className="text-green-400" />}
+                  sub={result.growth_momentum ? momentumSub(result.growth_momentum) : undefined}
                 >
-                  {hasAnalysis ? (
-                    <div className="text-xl font-semibold text-gray-900">
-                      {intensityLabel(result.paid_media_signal ?? '')}
+                  {result.growth_momentum ? (
+                    <div className={`inline-flex items-center gap-1.5 text-xl font-semibold ${momentumColor(result.growth_momentum)}`}>
+                      <span className={`h-2 w-2 rounded-full ${MOMENTUM_DOT[result.growth_momentum] ?? 'bg-gray-400'}`} />
+                      {result.growth_momentum}
                     </div>
                   ) : (
-                    <Skeleton className="h-7 w-20" />
+                    <Skeleton className="h-7 w-24" />
                   )}
                 </MetricCard>
                 <MetricCard
@@ -1973,22 +2014,7 @@ function AppShell() {
                   </div>
                 </MetricCard>
                 <MetricCard
-                  label="Active Meta Ads"
-                  icon={<MetaIcon width={12} height={12} className="text-blue-400" />}
-                  sub={
-                    result.paid_media_quality
-                      ? `~${result.paid_media_quality.quality_adjusted_ads} effective creatives`
-                      : undefined
-                  }
-                >
-                  {hasAnalysis || result.meta_ads ? (
-                    <div className="text-xl font-semibold text-gray-900 tabular-nums">{metaCount}</div>
-                  ) : (
-                    <Skeleton className="h-8 w-12" />
-                  )}
-                </MetricCard>
-                <MetricCard
-                  label="Est. Annual Ad Spend"
+                  label="Growth Investment"
                   icon={<span className="text-[11px] font-bold text-amber-400 leading-none">$</span>}
                   sub={
                     spendEst ? (
@@ -1998,7 +2024,8 @@ function AppShell() {
                           <InfoIcon width={11} height={11} />
                         </span>
                         <span className="mt-0.5 block text-[10px] leading-tight text-gray-500">
-                          {SPEND_HELPER}
+                          Estimated annual investment in growth, modeled from acquisition activity,
+                          category, and revenue signals.
                         </span>
                       </>
                     ) : undefined
@@ -2014,20 +2041,23 @@ function AppShell() {
                     <Skeleton className="h-7 w-24" />
                   )}
                 </MetricCard>
-                <MetricCard
-                  label="Growth Momentum"
-                  icon={<TrendUpIcon width={11} height={11} className="text-green-400" />}
-                  sub={result.growth_momentum ? momentumSub(result.growth_momentum) : undefined}
+                <button
+                  type="button"
+                  onClick={scrollToSignals}
+                  className="min-w-0 text-left transition-colors hover:bg-gray-50"
+                  title="Jump to Growth Signals"
                 >
-                  {result.growth_momentum ? (
-                    <div className={`inline-flex items-center gap-1.5 text-xl font-semibold ${momentumColor(result.growth_momentum)}`}>
-                      <span className={`h-2 w-2 rounded-full ${MOMENTUM_DOT[result.growth_momentum] ?? 'bg-gray-400'}`} />
-                      {result.growth_momentum}
+                  <MetricCard
+                    label="Signals"
+                    icon={<SparkleIcon width={11} height={11} className="text-violet-400" />}
+                    sub="Growth signal categories"
+                  >
+                    <div className="text-xl font-semibold text-gray-900">
+                      <span className="text-emerald-500">{liveSignals} live</span>
+                      <span className="text-gray-400"> · {soonSignals} soon</span>
                     </div>
-                  ) : (
-                    <Skeleton className="h-7 w-24" />
-                  )}
-                </MetricCard>
+                  </MetricCard>
+                </button>
               </div>
 
               {/* Growth Over Time — snapshot history chart. History comes from
@@ -2039,6 +2069,18 @@ function AppShell() {
                 refreshing={enriching}
                 refreshFailed={historyRefreshFailed}
               />
+
+              {/* Growth Signals — the composite categories behind the score */}
+              <section id="growth-signals" className="scroll-mt-20">
+                <div className="mb-3">
+                  <h2 className="text-sm font-semibold text-gray-900">Growth Signals</h2>
+                  <p className="mt-0.5 text-[12px] text-gray-500">
+                    What&rsquo;s driving this score — new signal sources activate automatically as
+                    they come online.
+                  </p>
+                </div>
+                <GrowthSignalsGrid categories={signalCategories} />
+              </section>
 
 
               {/* Bottom 3-column grid: Benchmarks · Paid Media Quality · Growth Narrative */}
@@ -2172,13 +2214,35 @@ function AppShell() {
                         </span>
                       }
                       action={
-                        <button
-                          onClick={copyBrief}
-                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700"
-                        >
-                          <CopyIcon width={11} height={11} />
-                          {copied ? 'Copied' : 'Copy'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                            Lens:
+                          </span>
+                          <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-[10px] font-medium">
+                            {PERSONAS.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => setPersona(p.id)}
+                                title={p.blurb}
+                                className={`rounded-md px-1.5 py-0.5 transition-colors ${
+                                  persona === p.id
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                              >
+                                {p.id === '3pl' ? '3PL' : p.label}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={copyBrief}
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            <CopyIcon width={11} height={11} />
+                            {copied ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
                       }
                     >
                       <div className="rounded-xl bg-indigo-500/[0.07] p-4 ring-1 ring-indigo-500/20">
@@ -2198,13 +2262,13 @@ function AppShell() {
                           </p>
                         </div>
                       )}
-                      {keyTakeaways(result).length > 0 && (
+                      {(personaTakeaways.length > 0 ? personaTakeaways : keyTakeaways(result)).length > 0 && (
                         <div className="mt-4">
                           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Key signals
+                            Key takeaways
                           </div>
                           <ul className="space-y-1.5">
-                            {keyTakeaways(result).map((t, i) => (
+                            {(personaTakeaways.length > 0 ? personaTakeaways : keyTakeaways(result)).map((t, i) => (
                               <li key={i} className="flex items-start gap-2 text-[12px] leading-snug text-gray-700">
                                 <CheckIcon width={13} height={13} className="mt-0.5 shrink-0 text-green-500" />
                                 {t}
