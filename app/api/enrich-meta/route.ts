@@ -10,6 +10,7 @@ import { computeMomentum, modelRevenue, spendBand } from '@/lib/intelligence';
 import { estimateMonthlySpend } from '@/lib/adSpend';
 import { analyzeCreativeQuality } from '@/lib/creativeQuality';
 import { writeSnapshot } from '@/lib/trends';
+import { fetchHiringSignals } from '@/lib/providers/jobs';
 import { requireApiKey } from '@/lib/apiAuth';
 
 // Meta-only enrichment for the bulk dataset. No website crawl, no Google /
@@ -76,6 +77,17 @@ export async function POST(request: Request) {
   const domain = normalizeDomain(parsed.data.domain);
   const supabase = createServiceClient();
   try {
+    // Kick off hiring-signal resolution in parallel with the Meta scrape —
+    // public ATS APIs, best-effort, bounded by its own timeouts.
+    const priorAtsPromise = supabase
+      .from('company_meta_signals')
+      .select('ats_provider, ats_slug')
+      .eq('domain', domain)
+      .maybeSingle();
+    const hiringPromise = Promise.resolve(priorAtsPromise)
+      .then(({ data }) => fetchHiringSignals(domain, data?.ats_provider ?? null, data?.ats_slug ?? null))
+      .catch(() => fetchHiringSignals(domain));
+
     const meta = await fetchMetaAdsSignals(parsed.data.facebook_url ?? null, domain);
     const count = meta.active_ads_count;
     const themes = inferCampaignThemes(meta.unique_landing_pages);
@@ -173,11 +185,25 @@ export async function POST(request: Request) {
       quality_adjusted_ads: quality.quality_adjusted_ads,
     };
 
+    // Hiring signals resolved in parallel; never fail the enrichment over them.
+    const hiring = await hiringPromise.catch(() => ({
+      provider: null, slug: null, open_roles: 0, growth_roles: 0, ops_roles: 0, titles_sample: [] as string[],
+    }));
+
     // Persist so a UI/browser-driven run doesn't need direct DB access.
     try {
       await supabase
         .from('company_meta_signals')
-        .upsert({ ...signals, last_enriched_at: new Date().toISOString() }, { onConflict: 'domain' });
+        .upsert({
+          ...signals,
+          ats_provider: hiring.provider,
+          ats_slug: hiring.slug,
+          open_roles: hiring.open_roles,
+          growth_roles: hiring.growth_roles,
+          ops_roles: hiring.ops_roles,
+          jobs_checked_at: new Date().toISOString(),
+          last_enriched_at: new Date().toISOString(),
+        }, { onConflict: 'domain' });
     } catch (e) {
       logger.error('enrich-meta persist failed', {
         domain,
@@ -216,6 +242,7 @@ export async function POST(request: Request) {
       spend_confidence: snapSpend?.confidence ?? null,
       run_id: parsed.data.run_id ?? null,
       source: 'observed',
+      open_roles: hiring.open_roles,
     });
 
     return NextResponse.json({ ok: true, signals, snapshot_written: snapshotWritten });

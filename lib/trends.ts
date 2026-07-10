@@ -48,6 +48,7 @@ export interface SnapshotExtras {
   spend_confidence?: string | null;
   run_id?: string | null;
   source?: string; // 'observed' (default) — synthetic sources must label themselves
+  open_roles?: number | null;
 }
 
 /**
@@ -86,6 +87,7 @@ export async function writeSnapshot(
         spend_confidence: extras.spend_confidence ?? null,
         run_id: extras.run_id ?? null,
         source: extras.source ?? 'observed',
+        open_roles: extras.open_roles ?? null,
       },
       { onConflict: 'domain,snapshot_date', ignoreDuplicates: true }
     );

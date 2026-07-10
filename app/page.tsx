@@ -122,7 +122,16 @@ interface TimelineEntry {
   google_change_pct: number | null;
 }
 
+interface HiringSignalsBlock {
+  ats_provider: string | null;
+  open_roles: number | null;
+  growth_roles: number | null;
+  ops_roles: number | null;
+  jobs_checked_at: string | null;
+}
+
 interface AnalysisResult {
+  hiring?: HiringSignalsBlock | null;
   domain: string;
   growth_score?: number;
   growth_momentum?: string;
@@ -1527,6 +1536,7 @@ function AppShell() {
         cached: Boolean(data.analysis),
         enriching: Boolean(data.needs_enrichment),
         cache_age_days: data.cache_age_days ?? null,
+        hiring: data.hiring ?? null,
         ...(data.analysis ?? {}),
       };
       setResult(base);
@@ -1550,6 +1560,7 @@ function AppShell() {
               ...fresh,
               history: fresh.history ?? base.history,
               spend_estimate: fresh.spend_estimate ?? base.spend_estimate,
+              hiring: fresh.hiring ?? base.hiring,
               enriching: false,
             });
             await refreshHistory(q, seq);
@@ -1623,6 +1634,11 @@ function AppShell() {
         ad_activity_level: result.paid_media_signal ?? result.meta_ads?.ad_activity_level ?? null,
         landing_pages: result.meta_ads?.unique_landing_pages ?? [],
         spend_label: spendEst?.label ?? null,
+        open_roles: result.hiring?.open_roles ?? null,
+        growth_roles: result.hiring?.growth_roles ?? null,
+        ops_roles: result.hiring?.ops_roles ?? null,
+        jobs_checked_at: result.hiring?.jobs_checked_at ?? null,
+        ats_provider: result.hiring?.ats_provider ?? null,
       })
     : [];
   const liveSignals = signalCategories.filter((c) => c.status === 'live').length;

@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     {
       const { data: sig } = await supabase
         .from('company_meta_signals')
-        .select('active_meta_ads, google_ads, linkedin_ads, company_name, primary_category, growth_score, growth_momentum, estimated_revenue_range, revenue_confidence, spend_band, ad_activity_level, landing_pages, campaign_themes, sample_ad_copy, real_creative_score, quality_adjusted_ads, unique_creative_count, creative_diversity_score, campaign_angle_count, offer_diversity, landing_page_diversity, dpa_share')
+        .select('active_meta_ads, google_ads, linkedin_ads, company_name, primary_category, growth_score, growth_momentum, estimated_revenue_range, revenue_confidence, spend_band, ad_activity_level, landing_pages, campaign_themes, sample_ad_copy, real_creative_score, quality_adjusted_ads, unique_creative_count, creative_diversity_score, campaign_angle_count, offer_diversity, landing_page_diversity, dpa_share, ats_provider, open_roles, growth_roles, ops_roles, jobs_checked_at')
         .eq('domain', company.domain)
         .maybeSingle();
       storedSig = sig ?? null;
@@ -277,6 +277,15 @@ export async function POST(request: Request) {
       timeline,
       history: historyRows,
       trend_status: trendStatus(historyRows.length),
+      hiring: storedSig
+        ? {
+            ats_provider: (storedSig.ats_provider as string) ?? null,
+            open_roles: storedSig.open_roles != null ? Number(storedSig.open_roles) : null,
+            growth_roles: storedSig.growth_roles != null ? Number(storedSig.growth_roles) : null,
+            ops_roles: storedSig.ops_roles != null ? Number(storedSig.ops_roles) : null,
+            jobs_checked_at: (storedSig.jobs_checked_at as string) ?? null,
+          }
+        : null,
       spend_estimate: spendEstimate,
       cache_age_days: cacheAgeDays != null ? Math.round(cacheAgeDays * 10) / 10 : null,
       cache_fresh: cacheFresh,

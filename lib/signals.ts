@@ -29,6 +29,11 @@ export interface SignalRowLike {
   landing_pages?: unknown;
   ad_activity_level?: string | null;
   spend_label?: string | null; // formatted annual band
+  open_roles?: number | null;
+  growth_roles?: number | null;
+  ops_roles?: number | null;
+  jobs_checked_at?: string | null; // hiring category is live once checked
+  ats_provider?: string | null;
 }
 
 const intensityLabel = (v?: string | null) =>
@@ -67,13 +72,30 @@ export function buildSignalCategories(row: SignalRowLike): SignalCategory[] {
       blurb: 'Live acquisition activity observed across ad platforms — the strongest near-term growth evidence.',
       metrics: paidMetrics,
     },
-    {
-      key: 'hiring',
-      label: 'Hiring Velocity',
-      status: 'coming_soon',
-      blurb: 'Open roles and team growth — headcount expansion is a committed-spend growth signal.',
-      metrics: [],
-    },
+    row.jobs_checked_at
+      ? {
+          key: 'hiring',
+          label: 'Hiring Velocity',
+          status: 'live' as const,
+          blurb: row.ats_provider
+            ? 'Live open roles from the brand\'s public job board — headcount expansion is committed-spend growth.'
+            : 'No public job board found for this brand — checked and monitored; activates if one appears.',
+          metrics: row.ats_provider
+            ? ([
+                { label: 'Open roles', value: String(row.open_roles ?? 0), tone: (row.open_roles ?? 0) > 0 ? 'positive' : 'default' },
+                ...((row.growth_roles ?? 0) > 0 ? [{ label: 'Growth / marketing roles', value: String(row.growth_roles), tone: 'positive' as const }] : []),
+                ...((row.ops_roles ?? 0) > 0 ? [{ label: 'Ops / fulfillment roles', value: String(row.ops_roles), tone: 'positive' as const }] : []),
+                { label: 'Source', value: row.ats_provider.charAt(0).toUpperCase() + row.ats_provider.slice(1) },
+              ] as SignalMetric[])
+            : [{ label: 'Public job board', value: 'Not found', tone: 'muted' as const }],
+        }
+      : {
+          key: 'hiring',
+          label: 'Hiring Velocity',
+          status: 'coming_soon' as const,
+          blurb: 'Open roles and team growth — headcount expansion is a committed-spend growth signal.',
+          metrics: [],
+        },
     {
       key: 'tech_stack',
       label: 'Tech Stack Changes',

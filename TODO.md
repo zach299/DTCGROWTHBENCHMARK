@@ -207,3 +207,22 @@ TAM results; empty My Accounts → growth-framed empty state ("Monitor your book
 Deferred: real CRM OAuth (connected-app setup per provider, token store, field mapping);
 real hiring / tech-stack / funding signal sources (grid slots exist as coming-soon);
 server-side persona storage when workspaces exist.
+
+## Hiring signals (Phase 1: public ATS APIs) — SHIPPED
+- lib/providers/jobs.ts: resolves a brand's job board via homepage/careers-page
+  ATS link detection (Greenhouse/Lever/Ashby/Recruitee) with domain-stem probe
+  fallback; fetches the PUBLIC board JSON (no scraping, no tokens); classifies
+  growth/marketing vs ops/fulfillment roles.
+- Runs in parallel with the Meta scrape inside enrich-meta (best-effort, own
+  timeouts, never fails an enrichment). Persists ats_provider/slug, open_roles,
+  growth_roles, ops_roles, jobs_checked_at; snapshots carry open_roles so
+  hiring velocity becomes a time series like ads.
+- Hiring Velocity card goes LIVE per brand once checked: open roles + growth/
+  ops splits + source; brands with no public board show an honest
+  "checked, none found" state. Fills in as the nightly worker re-enriches.
+- Deferred (Phase 2, documented): LinkedIn/Indeed via Apify for non-ATS brands
+  (~$1-5/1k listings, top-tier only); paid datasets (Coresignal etc.) later.
+- NOTE: live-network verification impossible from this sandbox (egress
+  allowlist); resolution/classification covered by unit tests; first real
+  coverage numbers visible after tonight's run (query: count jobs_checked_at
+  IS NOT NULL / ats_provider IS NOT NULL).
