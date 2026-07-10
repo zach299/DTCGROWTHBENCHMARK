@@ -16,3 +16,14 @@
    infra this run; wired to My Accounts + watchlist domains.
 7. CRM push: UI + lib/crm.ts interface only (coming soon). Real OAuth per provider documented in TODO.
 8. No new npm dependencies.
+9. P3 copy sweep: "Live Campaigns" is the user-facing name for the active-Meta-ads count in
+   list/table surfaces (tooltip "Active Meta ads observed" preserves precision); raw "Meta Ads"
+   labels remain only in clearly ad-specific evidence UI (chart tab, benchmark platform rows,
+   Paid Media cards, extension stats grid).
+10. Suggested-query chips on the home screen keep ad wording ("Brands scaling Meta ads", "high
+   ad spend") — they are example *queries* fed to the TAM parser, not product positioning, and
+   rewording risks breaking parser extraction.
+11. "Est. Paid Media Spend" report card retitled "Est. Growth Investment" to match the metric-row
+   and signals-grid naming; methodology caption still cites live ad volume (honest sourcing).
+12. layout.tsx metadata mirrors the homepage subhead's growth-signals framing ("expansion
+   activity" instead of enumerating hiring/tech-stack, which are still coming-soon).

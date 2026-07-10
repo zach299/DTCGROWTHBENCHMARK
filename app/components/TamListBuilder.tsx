@@ -468,7 +468,7 @@ export default function TamListBuilder({
           <input type="number" min={0} max={100} value={minScore} onChange={(e) => setMinScore(e.target.value)} placeholder="—" className={numCls} />
         </label>
         <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-          Min Meta ads
+          Min live campaigns
           <input type="number" min={0} value={minMeta} onChange={(e) => setMinMeta(e.target.value)} placeholder="—" className={numCls} />
         </label>
         <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -499,8 +499,8 @@ export default function TamListBuilder({
             className={selectCls}
           >
             <option value="growth">Fastest growing</option>
-            <option value="spend">Highest est. spend</option>
-            <option value="meta_ads">Most Meta ads</option>
+            <option value="spend">Highest growth investment</option>
+            <option value="meta_ads">Most live campaigns</option>
             <option value="newest">Newest</option>
           </select>
         </label>
@@ -577,11 +577,11 @@ export default function TamListBuilder({
                   <th className="min-w-[180px] px-3 py-2.5">Company</th>
                   <th className="hidden px-3 py-2.5 lg:table-cell">Category</th>
                   <th className="hidden px-3 py-2.5 text-right md:table-cell">Est. Revenue</th>
-                  <th className="px-3 py-2.5 text-right">Est. Annual Spend</th>
+                  <th className="px-3 py-2.5 text-right">Growth Investment</th>
                   <th className="px-3 py-2.5 text-right">Score</th>
                   <th className="px-2 py-2.5">Trend</th>
                   <th className="hidden px-3 py-2.5 xl:table-cell">Momentum</th>
-                  <th className="hidden px-3 py-2.5 text-right sm:table-cell">Meta Ads</th>
+                  <th className="hidden px-3 py-2.5 text-right sm:table-cell" title="Active Meta ads observed">Live Campaigns</th>
                   <th className="hidden min-w-[240px] px-3 py-2.5 lg:table-cell">Why interesting</th>
                   <th className="hidden px-3 py-2.5 text-right xl:table-cell">Updated</th>
                   <th className="w-[130px] px-3 py-2.5 text-right">Actions</th>

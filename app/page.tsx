@@ -1817,8 +1817,8 @@ function AppShell() {
               </div>
               <h2 className="text-xl font-bold text-gray-900">Analyze any company</h2>
               <p className="mt-2 max-w-md text-sm text-gray-500">
-                Type a domain above to see its Growth Rank, momentum, modeled revenue, ad-platform
-                activity and a creative-quality breakdown — in seconds.
+                Type a domain above to see its Growth Rank, momentum, modeled revenue, and the
+                live growth signals behind them — in seconds.
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 {['ridge.com', 'gymshark.com', 'drinkag1.com'].map((d) => (
@@ -2301,7 +2301,7 @@ function AppShell() {
                         </div>
                       )}
                       <p className="mt-4 flex items-center gap-1 border-t border-gray-100 pt-3 text-[10px] text-gray-500">
-                        Derived from tracked ad and growth signals · directional, not financial advice
+                        Derived from live growth signals · directional, not financial advice
                         <InfoIcon width={10} height={10} />
                       </p>
                     </Card>
@@ -2686,14 +2686,14 @@ function AppShell() {
                     </Card>
                   )}
 
-                  {/* Estimated Paid Media Spend */}
+                  {/* Estimated Growth Investment */}
                   {(result.spend_band || sales > 0) && (
-                    <Card title="Est. Paid Media Spend">
+                    <Card title="Est. Growth Investment">
                       <div className="text-2xl font-bold text-gray-900">
                         {result.spend_band ?? `${estSpend(sales)}/mo`}
                       </div>
                       <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                        Directional band modeled from active ad volume and paid intensity — not an exact figure.
+                        Directional band modeled from live ad volume and growth investment intensity — not an exact figure.
                       </p>
                     </Card>
                   )}

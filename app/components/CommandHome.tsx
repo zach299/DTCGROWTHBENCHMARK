@@ -47,7 +47,7 @@ const BUILD_STEPS = [
   'Building your TAM list…',
   'Analyzing growth signals…',
   'Ranking accounts…',
-  'Estimating ad spend…',
+  'Estimating growth investment…',
 ];
 
 interface WatchlistItem {
@@ -255,8 +255,8 @@ export default function CommandHome({
           Find your <span className="tam-gradient-text">fastest-growing</span> TAM
         </h1>
         <p className="mt-3 max-w-[560px] text-[15px] leading-relaxed text-gray-500">
-          Tambourine helps GTM teams build account lists from growth signals like ad activity,
-          spend estimates, revenue, tech stack, and market momentum.
+          Tambourine helps GTM teams find and monitor growing accounts using live growth signals
+          — market momentum, growth investment, revenue scale, hiring, and tech stack.
         </p>
 
         {firstVisit && buildingStep == null && (
@@ -427,7 +427,7 @@ export default function CommandHome({
                   <BarsIcon width={17} height={17} />
                 </span>
                 <div className="min-w-0">
-                  <div className="text-[11px] font-medium text-gray-500">Est. Annual Ad Spend Tracked</div>
+                  <div className="text-[11px] font-medium text-gray-500">Growth Investment Tracked</div>
                   <div className="text-xl font-bold tracking-tight text-gray-900 tabular-nums">
                     {formatSpend(stats.spendMid)}+
                   </div>

@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Tambourine — Find your fastest-growing TAM',
   description:
-    'Tambourine helps GTM teams build account lists from growth signals like ad activity, spend estimates, revenue, and market momentum.',
+    'Tambourine helps GTM teams find and monitor growing accounts using live growth signals — market momentum, growth investment, revenue scale, and expansion activity.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

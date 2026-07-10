@@ -157,15 +157,15 @@ function briefText(n) {
 
   let s2 = '';
   if (mom === 'Exploding' || mom === 'Accelerating') {
-    s2 = ` Momentum is ${mom.toLowerCase()} — signals point to aggressive paid-media scaling`;
+    s2 = ` Momentum is ${mom.toLowerCase()} — signals point to aggressive growth investment`;
     if (meta > 0) s2 += ` with <b>${meta} active Meta ads</b>`;
     s2 += '.';
   } else if (mom === 'Scaling') {
-    s2 = ' Scaling steadily across paid channels';
+    s2 = ' Scaling steadily across growth channels';
     if (meta > 0) s2 += ` with <b>${meta} active Meta ads</b>`;
     s2 += ' — a solid outreach prospect.';
   } else if (mom === 'Emerging') {
-    s2 = ' Early-stage paid investment detected';
+    s2 = ' Early-stage growth investment detected';
     if (meta > 0) s2 += ` (<b>${meta} active Meta ads</b>)`;
     s2 += ' — one to watch as they scale.';
   } else if (meta > 0) {
@@ -173,7 +173,7 @@ function briefText(n) {
     if ((n.google ?? 0) > 0) s2 += ` and <b>${n.google} Google ads</b>`;
     s2 += '.';
   } else {
-    s2 = ' Limited paid signal detected — open the full report for a deeper breakdown.';
+    s2 = ' Limited growth signal detected — open the full report for a deeper breakdown.';
   }
   return s1 + s2;
 }
@@ -191,19 +191,19 @@ function insightText(n) {
   const rcs = n.real_creative_score;
   const dpa = n.dpa_share ?? 0;
   if (rcs != null && rcs >= 65 && meta >= 20)
-    return 'Creative velocity is rising with strong paid-media activity.';
+    return 'Creative velocity is rising — a strong, committed growth investment motion.';
   if (dpa >= 0.5 && meta >= 30)
     return 'Ad volume is largely catalog/DPA — real creative output is lighter than the count suggests.';
   if (mom === 'Exploding' || mom === 'Accelerating')
-    return 'Accelerating across paid channels — a high-priority account.';
+    return 'Accelerating across growth channels — a high-priority account.';
   if (mom === 'Scaling')
     return 'Scaling steadily. Worth prioritizing for outreach.';
   if (meta >= 50)
     return 'High active ad volume — active creative testing motion detected.';
   if ((n.google ?? 0) > 0 && meta > 0)
-    return 'Active on both Meta and Google — multi-channel advertiser.';
+    return 'Active on both Meta and Google — a multi-channel growth motion.';
   if (mom === 'Emerging')
-    return 'Early-stage paid investment — one to watch as they scale.';
+    return 'Early-stage growth investment — one to watch as they scale.';
   return 'Signals captured. Open the full report for a detailed breakdown.';
 }
 
@@ -307,8 +307,8 @@ function spendRow(spend) {
   return `
     <div class="spend-row">
       <div class="spend-left">
-        <div class="spend-label">Est. Annual Ad Spend</div>
-        <div class="spend-sub">Estimated from ad signals</div>
+        <div class="spend-label">Est. Growth Investment</div>
+        <div class="spend-sub">Estimated from live ad signals · annual</div>
       </div>
       <div class="spend-right">
         <span class="conf-dot ${dot}"></span>

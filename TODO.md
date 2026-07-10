@@ -160,3 +160,50 @@ circuit breaker aborts the run after 25 consecutive failures with zero successes
 (no more burning the whole batch when upstream is down).
 **Watch:** if the next run STILL 403s, it's Apify credits/billing — top up at
 apify.com (user action).
+
+## P3 adversarial persona pass
+Read as: skeptical 3PL rep · agency owner · DTC SaaS AE. Findings + fixes (all copy-level):
+- Homepage subhead led with "ad activity, spend estimates" → now "live growth signals — market
+  momentum, growth investment, revenue scale, hiring, and tech stack" (CommandHome).
+- BUILD_STEPS "Estimating ad spend…" → "Estimating growth investment…" (CommandHome).
+- Homepage stat "Est. Annual Ad Spend Tracked" → "Growth Investment Tracked" (CommandHome).
+- layout.tsx metadata description rewritten to growth-intelligence framing (no "ad activity").
+- Analyze empty state promised "ad-platform activity and a creative-quality breakdown" →
+  "the live growth signals behind them" (page.tsx) — an AE read this as ad-spy positioning.
+- Top Movers subtitle "accelerating their paid growth" → "accelerating their growth";
+  stat "Avg Active Ads / among active advertisers" → "Avg Live Campaigns / among accounts with
+  live campaigns"; "Est. Monthly Spend Tracked" → "Growth Investment Tracked"; sort pill
+  "Most Meta Ads" → "Most Live Campaigns" (TopMoversView).
+- Table column "Meta Ads" → "Live Campaigns" (title tooltip "Active Meta ads observed") and
+  "Est. Annual Spend" → "Growth Investment" in TopMoversView + TamListBuilder; TamListBuilder
+  filter "Min Meta ads" → "Min live campaigns", sorts "Highest est. spend"/"Most Meta ads" →
+  "Highest growth investment"/"Most live campaigns".
+- Chart tab "Est. Annual Spend" → "Growth Investment"; refresh pill "Refreshing latest ad
+  signals" → "growth signals" (GrowthOverTime). "Active Meta Ads" tab kept (ad-specific series).
+- Report: "Est. Paid Media Spend" card → "Est. Growth Investment"; its caption "paid intensity"
+  → "growth investment intensity"; Growth Narrative footer "tracked ad and growth signals" →
+  "live growth signals" (page.tsx). "Paid Media Overview"/"Paid Media Quality" cards and
+  benchmark platform rows kept — clearly ad-specific evidence UI.
+- Extension popup: brief/insight lines "paid-media scaling", "paid channels", "paid investment",
+  "multi-channel advertiser", "Limited paid signal" → growth-investment phrasing; spend row
+  "Est. Annual Ad Spend" → "Est. Growth Investment". Meta/Google/LinkedIn Ads stat labels kept
+  (extension is the evidence surface).
+Kept deliberately: suggested-query chips ("Brands scaling Meta ads", "spending $100k+/mo") — they
+are user queries, not product framing; admin/bulk copy (operational); tamQuery parser keywords,
+API field names, lib outbound/lens copy untouched.
+Edge cases verified: zero-ad report → hero still score/momentum-first, signals grid Paid Media
+intensity renders "None" (lib/signals intensityLabel fallback); persona 'other' → no lens chip in
+TAM results; empty My Accounts → growth-framed empty state ("Monitor your book of business").
+
+## Repositioning run summary
+- P0: score-first report hierarchy (Growth Score/Rank hero, momentum, revenue, growth
+  investment metric row), growth-intelligence nav/framing.
+- P1: signal registry (lib/signals.ts) + Growth Signals grid with honest live/coming-soon
+  status; persona lens (localStorage, templated persona takeaways/angles, no extra LLM calls).
+- P2: My Accounts (watchlist-backed + /api/accounts scoring), alerts computed from snapshot
+  deltas, CRM push UI stub, "Growth Investment" naming for the spend-estimate surface.
+- P3: full ad-tool copy sweep (app + extension + metadata), adversarial persona pass (above),
+  wrap-up docs.
+Deferred: real CRM OAuth (connected-app setup per provider, token store, field mapping);
+real hiring / tech-stack / funding signal sources (grid slots exist as coming-soon);
+server-side persona storage when workspaces exist.

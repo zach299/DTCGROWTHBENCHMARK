@@ -72,7 +72,7 @@ function seriesFor(history: SnapshotRow[], metric: Metric): ChartPoint[] {
 const METRIC_META: Record<Metric, { label: string; format: (v: number) => string }> = {
   growth_score: { label: 'Growth Score', format: (v) => Math.round(v).toLocaleString() },
   active_meta_ads: { label: 'Active Meta Ads', format: (v) => Math.round(v).toLocaleString() },
-  est_spend: { label: 'Est. Annual Spend', format: (v) => formatSpend(v) },
+  est_spend: { label: 'Growth Investment', format: (v) => formatSpend(v) },
 };
 
 const METRICS = Object.keys(METRIC_META) as Metric[];
@@ -85,7 +85,7 @@ function RefreshPill({ failed }: { failed: boolean }) {
   ) : (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-500 ring-1 ring-indigo-500/30">
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
-      Refreshing latest ad signals…
+      Refreshing latest growth signals…
     </span>
   );
 }

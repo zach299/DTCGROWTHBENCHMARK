@@ -62,7 +62,7 @@ type SortKey =
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'fastest', label: 'Fastest Growing' },
   { key: 'spend', label: 'Highest Est. Spend' },
-  { key: 'meta', label: 'Most Meta Ads' },
+  { key: 'meta', label: 'Most Live Campaigns' },
   { key: 'google', label: 'Top Google' },
   { key: 'linkedin', label: 'Top LinkedIn' },
   { key: 'top1', label: 'Entering Top 1%' },
@@ -175,7 +175,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
         <p className="mt-0.5 text-sm text-gray-500">
           {total > 0
             ? `${total.toLocaleString()} companies tracked · ranked by Growth Score`
-            : 'The companies accelerating their paid growth right now'}
+            : 'The companies accelerating their growth right now'}
         </p>
       </div>
 
@@ -193,9 +193,9 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
               [
                 ['Companies Tracked', total.toLocaleString(), null],
                 ['In Top 1%', stats.top1.toLocaleString(), 'by growth score'],
-                ['Avg Active Ads', stats.avgAds.toLocaleString(), 'among active advertisers'],
+                ['Avg Live Campaigns', stats.avgAds.toLocaleString(), 'among accounts with live campaigns'],
                 [
-                  'Est. Monthly Spend Tracked',
+                  'Growth Investment Tracked',
                   stats.totalSpendMid > 0 ? `~${formatSpend(stats.totalSpendMid)}` : '—',
                   'sum of band midpoints · estimate',
                 ],
@@ -294,9 +294,11 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                   <th className="hidden px-3 py-2.5 lg:table-cell">Category</th>
                   <th className="hidden px-3 py-2.5 text-right md:table-cell">Est. Revenue</th>
                   <th className="px-3 py-2.5 text-right" title={SPEND_HELPER}>
-                    Est. Annual Spend
+                    Growth Investment
                   </th>
-                  <th className="px-3 py-2.5 text-right">Meta Ads</th>
+                  <th className="px-3 py-2.5 text-right" title="Active Meta ads observed">
+                    Live Campaigns
+                  </th>
                   <th className="hidden px-3 py-2.5 text-right sm:table-cell">Score</th>
                   <th className="hidden px-3 py-2.5 xl:table-cell">Momentum</th>
                   <th className="hidden min-w-[220px] px-3 py-2.5 2xl:table-cell">Why interesting</th>
