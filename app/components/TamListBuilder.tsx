@@ -8,6 +8,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TamFilters } from '@/lib/tamQuery';
 import type { SpendEstimate } from '@/lib/adSpend';
+import { PERSONAS, buildPersonaReason, type Persona } from '@/lib/persona';
+import { buildReason } from '@/lib/reason';
+import { usePersona } from './usePersona';
 import Skeleton from './Skeleton';
 import { useAuth } from './AuthProvider';
 import EmptyState from './EmptyState';
@@ -108,6 +111,23 @@ const MOMENTUM_TEXT: Record<string, string> = {
   Dormant: 'text-gray-500',
 };
 
+// Persona-aware override for the server-built reason. TAM rows carry fewer
+// signals than the full report (no landing pages / creative scores), so we
+// only build from what the row has; when the persona template comes back
+// thin (identical to the neutral fallback) or the lens is 'other', the
+// richer server reason wins.
+function rowReason(persona: Persona, a: TamAccount): string {
+  if (persona === 'other') return a.reason;
+  const inputs = {
+    metaAds: a.active_meta_ads,
+    momentum: a.growth_momentum,
+    growthScore: a.growth_score,
+    spend: a.spend_estimate,
+  };
+  const personaReason = buildPersonaReason(persona, inputs);
+  return personaReason === buildReason(inputs) ? a.reason : personaReason;
+}
+
 function relativeTime(iso: string | null): string {
   if (!iso) return '—';
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -195,6 +215,7 @@ export default function TamListBuilder({
 }) {
   const { user } = useAuth();
   const uid = user?.id ?? 'anon';
+  const [persona] = usePersona();
   const [data, setData] = useState<TamResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -499,6 +520,14 @@ export default function TamListBuilder({
             {data.total_matched.toLocaleString()} accounts matched
           </span>
           <span className="text-gray-500">· of {data.total_tracked.toLocaleString()} tracked</span>
+          {persona !== 'other' && (
+            <span
+              title="Change in Settings"
+              className="rounded-full bg-white/[0.05] px-2.5 py-0.5 text-[11px] font-medium text-gray-400 ring-1 ring-white/10"
+            >
+              Lens: {persona === '3pl' ? '3PL' : PERSONAS.find((p) => p.id === persona)?.label ?? persona}
+            </span>
+          )}
           {data.applied_filters.map((f) => (
             <span
               key={f}
@@ -620,7 +649,7 @@ export default function TamListBuilder({
                       {a.active_meta_ads?.toLocaleString() ?? '—'}
                     </td>
                     <td className="hidden max-w-[340px] px-3 py-2.5 text-[12px] leading-snug text-gray-500 lg:table-cell">
-                      {a.reason}
+                      {rowReason(persona, a)}
                     </td>
                     <td className="hidden whitespace-nowrap px-3 py-2.5 text-right text-[11px] text-gray-400 xl:table-cell">
                       {relativeTime(a.last_enriched_at)}

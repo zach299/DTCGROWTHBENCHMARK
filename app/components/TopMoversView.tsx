@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SpendEstimate } from '@/lib/adSpend';
 import { formatSpend, revenueMidM } from '@/lib/adSpend';
-import { buildReason } from '@/lib/reason';
+import { buildPersonaReason } from '@/lib/persona';
+import { usePersona } from './usePersona';
 import Skeleton from './Skeleton';
 import EmptyState from './EmptyState';
 import { SearchIcon, TrendUpIcon } from './icons';
@@ -78,6 +79,9 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
   const [cat, setCat] = useState<string>('');
   const [minRevM, setMinRevM] = useState<number>(0);
   const [reloadKey, setReloadKey] = useState(0);
+  // Active seller lens (Settings → "What do you sell?") — 'other' renders the
+  // neutral reason via buildPersonaReason's fallback.
+  const [persona] = usePersona();
 
   useEffect(() => {
     let cancelled = false;
@@ -344,7 +348,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                       {m.growth_momentum ?? '—'}
                     </td>
                     <td className="hidden max-w-[300px] px-3 py-2 text-[12px] leading-snug text-gray-500 2xl:table-cell">
-                      {buildReason({
+                      {buildPersonaReason(persona, {
                         metaAds: m.active_meta_ads,
                         realCreativeScore: m.real_creative_score,
                         dpaShare: m.dpa_share,

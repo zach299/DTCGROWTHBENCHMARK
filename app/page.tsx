@@ -40,7 +40,8 @@ import GrowthOverTime, { type SnapshotRow } from '@/app/components/GrowthOverTim
 import TopMoversView from '@/app/components/TopMoversView';
 import GrowthSignalsGrid from '@/app/components/GrowthSignalsGrid';
 import { buildSignalCategories } from '@/lib/signals';
-import { PERSONAS, buildPersonaTakeaways, isPersona, personaStorageKey, type Persona } from '@/lib/persona';
+import { PERSONAS, buildPersonaTakeaways } from '@/lib/persona';
+import { usePersona } from '@/app/components/usePersona';
 import type { ReasonInputs } from '@/lib/reason';
 
 interface MetaAds {
@@ -1212,6 +1213,7 @@ function AuthLoader() {
 // plus the placeholder copy for workspace settings.
 function SettingsView() {
   const { user, signOut } = useAuth();
+  const [persona, setPersona] = usePersona();
   const [resetState, setResetState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   async function sendReset() {
@@ -1271,10 +1273,37 @@ function SettingsView() {
         </div>
       </Card>
       <Card title="Workspace">
-        <p className="text-sm text-gray-500">
-          Workspace preferences, team management, and plan controls will live here. For now,
-          everything runs on sensible defaults.
-        </p>
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">What do you sell?</h3>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Tambourine reframes account intelligence through your lens — same signals,
+              conclusions written for your pitch.
+            </p>
+          </div>
+          <div role="radiogroup" aria-label="What do you sell?" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {PERSONAS.map((p) => {
+              const selected = persona === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setPersona(p.id)}
+                  className={`rounded-xl border px-3.5 py-3 text-left transition-colors ${
+                    selected
+                      ? 'border-indigo-500 bg-indigo-500/[0.06] ring-2 ring-indigo-500'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <span className="block text-sm font-semibold text-gray-900">{p.label}</span>
+                  <span className="mt-0.5 block text-xs text-gray-500">{p.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </Card>
     </div>
   );
@@ -1596,17 +1625,10 @@ function AppShell() {
   const scrollToSignals = () =>
     document.getElementById('growth-signals')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // Persona lens for the Growth Narrative — initialized from the stored value
-  // (Settings owns persistence; switching here updates only this card).
-  const [persona, setPersona] = useState<Persona>('other');
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(personaStorageKey(user?.id));
-      if (isPersona(stored)) setPersona(stored);
-    } catch {
-      /* default 'other' */
-    }
-  }, [user?.id]);
+  // Persona lens for the Growth Narrative — the same workspace-wide setting
+  // as Settings → "What do you sell?": switching here persists and broadcasts
+  // via usePersona(), so Settings and every open view stay in sync.
+  const [persona, setPersona] = usePersona();
 
   const reasonInputs: ReasonInputs | null = result
     ? {

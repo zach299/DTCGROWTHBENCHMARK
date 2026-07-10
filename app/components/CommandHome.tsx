@@ -37,6 +37,10 @@ const SUGGESTED: { label: string; icon: React.ReactNode }[] = [
   { label: 'Newly accelerating apparel companies', icon: <ShirtIcon width={13} height={13} className="text-violet-400" /> },
   { label: 'Home goods brands entering top 1%', icon: <HouseIcon width={13} height={13} className="text-amber-400" /> },
   { label: 'Companies spending $100k+/mo', icon: <DollarCircleIcon width={13} height={13} className="text-emerald-400" /> },
+  // Persona-shaped prompts — the TAM parser extracts what it can from each.
+  { label: 'Brands likely outgrowing their 3PL', icon: <LayersIcon width={13} height={13} className="text-sky-400" /> },
+  { label: 'Brands scaling paid with rising CAC pressure', icon: <BarsIcon width={13} height={13} className="text-indigo-400" /> },
+  { label: 'Fast-growing brands under $50M revenue', icon: <TrendUpIcon width={13} height={13} className="text-teal-400" /> },
 ];
 
 const BUILD_STEPS = [
