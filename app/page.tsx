@@ -8,6 +8,7 @@ import {
   UploadIcon,
   StarIcon,
   BellIcon,
+  BuildingIcon,
   ChevronUpDownIcon,
   ExternalLinkIcon,
   InfoIcon,
@@ -38,6 +39,8 @@ import MetricCard from '@/app/components/MetricCard';
 import SpendEstimateBadge from '@/app/components/SpendEstimateBadge';
 import GrowthOverTime, { type SnapshotRow } from '@/app/components/GrowthOverTime';
 import TopMoversView from '@/app/components/TopMoversView';
+import MyAccountsView from '@/app/components/MyAccountsView';
+import AlertsView from '@/app/components/AlertsView';
 import GrowthSignalsGrid from '@/app/components/GrowthSignalsGrid';
 import { buildSignalCategories } from '@/lib/signals';
 import { PERSONAS, buildPersonaTakeaways } from '@/lib/persona';
@@ -499,6 +502,7 @@ function ResearchBriefBody({ text }: { text: string }) {
 const NAV: { label: string; view: View; icon: React.ComponentType<React.SVGProps<SVGSVGElement>> }[] = [
   { label: 'Home', view: 'home', icon: HomeIcon },
   { label: 'Build TAM List', view: 'build', icon: PlusSquareIcon },
+  { label: 'My Accounts', view: 'accounts', icon: BuildingIcon },
   { label: 'Top Movers', view: 'movers', icon: TrendUpIcon },
   { label: 'Search Accounts', view: 'search', icon: SearchIcon },
   { label: 'Watchlist', view: 'watchlist', icon: StarIcon },
@@ -510,6 +514,7 @@ const NAV: { label: string; view: View; icon: React.ComponentType<React.SVGProps
 type View =
   | 'home'
   | 'build'
+  | 'accounts'
   | 'search'
   | 'watchlist'
   | 'movers'
@@ -1776,26 +1781,12 @@ function AppShell() {
               onSelectDomain={runAnalyze}
               onOpenMovers={() => setView('movers')}
               onOpenWatchlist={() => setView('watchlist')}
+              onOpenMyAccounts={() => setView('accounts')}
             />
           )}
           {view === 'build' && <TamListBuilder initialQuery={tamQuery} onOpenBrief={runAnalyze} />}
-          {view === 'alerts' && (
-            <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white">
-              <EmptyState
-                icon={<BellIcon width={18} height={18} />}
-                title="Alerts are coming to Tambourine"
-                body="Watchlist changes — momentum shifts, new ad launches, spend jumps — will notify you here. Save accounts to your Watchlist now so alerts have something to watch."
-                action={
-                  <button
-                    onClick={() => setView('watchlist')}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-                  >
-                    Go to Watchlist
-                  </button>
-                }
-              />
-            </div>
-          )}
+          {view === 'accounts' && <MyAccountsView onOpenReport={runAnalyze} />}
+          {view === 'alerts' && <AlertsView onOpenMyAccounts={() => setView('accounts')} />}
           {view === 'settings' && <SettingsView />}
           {view === 'watchlist' && <WatchlistView onSelect={runAnalyze} />}
           {view === 'movers' && <TopMoversView onSelect={runAnalyze} />}

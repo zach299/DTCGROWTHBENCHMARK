@@ -103,11 +103,13 @@ export default function CommandHome({
   onSelectDomain,
   onOpenMovers,
   onOpenWatchlist,
+  onOpenMyAccounts,
 }: {
   onBuild: (query: string) => void;
   onSelectDomain: (domain: string) => void;
   onOpenMovers: () => void;
   onOpenWatchlist: () => void;
+  onOpenMyAccounts: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [buildingStep, setBuildingStep] = useState<number | null>(null);
@@ -346,6 +348,43 @@ export default function CommandHome({
           </div>
         )}
       </div>
+
+      {/* Entry points: build a new TAM list, or monitor the book you already own */}
+      {buildingStep == null && (
+        <div className="mx-auto mt-10 grid max-w-[720px] grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => inputRef.current?.focus()}
+            className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-indigo-400"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-300 ring-1 ring-indigo-500/20">
+              <SparkleIcon width={15} height={15} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-gray-900">Build a TAM list</span>
+              <span className="mt-0.5 block text-[12px] leading-snug text-gray-400">
+                Describe your market and get ranked accounts.
+              </span>
+            </span>
+          </button>
+          <div className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20">
+              <BuildingIcon width={15} height={15} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-gray-900">Already have accounts?</span>
+              <span className="mt-0.5 block text-[12px] leading-snug text-gray-400">
+                Import your book of business and see which ones are growing.
+              </span>
+              <button
+                onClick={onOpenMyAccounts}
+                className="mt-2 inline-block text-xs font-medium text-indigo-400 hover:text-indigo-300"
+              >
+                Import accounts →
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Snapshot stat cards */}
       <div className="mx-auto mt-16 max-w-6xl">
