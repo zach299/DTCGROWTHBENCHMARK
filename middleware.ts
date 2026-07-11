@@ -49,5 +49,5 @@ export function middleware(req: NextRequest, event: NextFetchEvent) {
 export const config = {
   // All app routes (Clerk session handling) minus static assets, plus /api/*
   // (CORS). When Clerk is disabled, non-/api routes just pass through.
-  matcher: ['/((?!_next|.*\\..*).*)', '/api/:path*'],
+  matcher: ['/((?!_next|.*\\..*).*)', '/api/:path*', '/__clerk/:path*'],
 };
