@@ -27,3 +27,20 @@
    and signals-grid naming; methodology caption still cites live ad volume (honest sourcing).
 12. layout.tsx metadata mirrors the homepage subhead's growth-signals framing ("expansion
    activity" instead of enumerating hiring/tech-stack, which are still coming-soon).
+
+## Marketing homepage rebuild (Crustdata/Clay-grade)
+13. Reference mockup was LIGHT-themed; the written brief mandates dark near-black —
+    following the brief's dark system with the mockup's structure.
+14. Routing: '/' serves the marketing homepage to signed-OUT visitors (replaces the
+    AuthScreen gate branch); signed-in users get the unchanged app. /company-growth
+    is the lead-magnet variant (absorbs the P0 teaser-lookup spec from this run);
+    /lookup stays and will point at the same experience.
+15. "Book a demo" → mailto:zach@tambourinegrowth.com (no scheduling infra exists;
+    no fake calendar). "Trusted by" fake-logo strip from the mockup SKIPPED —
+    replaced with an honest stat strip (60k+ brands tracked / daily updates).
+16. Ticker/Top-Movers render instantly from typed sample data (recognizable DTC
+    brands, favicon logos) and hydrate from /api/top-movers when available —
+    structured for fully dynamic data later.
+17. Lead-magnet full-report unlock = work-email capture (lookup_requests,
+    source 'report_unlock') rather than forced signup; account creation is the
+    subtle post-unlock CTA per spec.

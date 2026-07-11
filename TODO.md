@@ -226,3 +226,12 @@ server-side persona storage when workspaces exist.
   allowlist); resolution/classification covered by unit tests; first real
   coverage numbers visible after tonight's run (query: count jobs_checked_at
   IS NOT NULL / ats_provider IS NOT NULL).
+
+## Marketing homepage + lead magnet run (in flight)
+- [x] lookup_requests table + /api/request-brand (email capture, queues domain for 24h scoring)
+- [ ] M1: marketing system (ParticleField, MarketingNav, GrowthTicker, TopMoversCarousel,
+      sections) + dark '/' homepage for signed-out visitors — agent running
+- [ ] M2: /company-growth lead magnet (limited nav, analyze flow, limited report w/
+      locked modules, email unlock gate, ticker) — after M1
+- [ ] Then resume queued pass: P1 contrast/WCAG audit, P2 remove Alerts from nav,
+      P3 company-page above-the-fold polish
