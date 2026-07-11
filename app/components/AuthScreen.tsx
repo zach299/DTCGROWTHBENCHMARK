@@ -1,177 +1,18 @@
 'use client';
 
-// Full-screen premium dark login. Shown by app/page.tsx when there is no
-// Supabase session. Supports password sign-in, account creation, and
-// passwordless magic links.
+// Full-screen marketing gate shown by app/page.tsx when auth is enabled and
+// there is no session. Sign-in/up themselves happen on the dedicated Clerk
+// routes (/sign-in, /sign-up). When authEnabled is false this screen never
+// renders — the gate in Home() passes straight through to the app.
 
-import { useState } from 'react';
+import Link from 'next/link';
 import { BoltIcon } from '@/app/components/icons';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
-type Mode = 'signin' | 'signup';
-type Sent = { kind: 'magic' | 'confirm'; email: string } | null;
-
-function humanError(message: string): string {
-  const m = message.toLowerCase();
-  if (m.includes('invalid login credentials')) {
-    return 'That email and password don’t match. Check for typos, or use a magic link instead.';
-  }
-  if (m.includes('rate limit') || m.includes('too many')) {
-    return 'Too many attempts — give it a minute, then try again.';
-  }
-  if (m.includes('already registered')) {
-    return 'An account with this email already exists. Try signing in instead.';
-  }
-  if (m.includes('password should be')) {
-    return 'Passwords need at least 6 characters.';
-  }
-  if (m.includes('email not confirmed')) {
-    return 'Your email hasn’t been confirmed yet. Check your inbox for the confirmation link.';
-  }
-  if (m.includes('valid email')) {
-    return 'That doesn’t look like a valid email address.';
-  }
-  return message;
-}
-
-function Spinner() {
-  return (
-    <svg
-      className="h-4 w-4 animate-spin"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
-      <path
-        d="M22 12a10 10 0 0 0-10-10"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-export default function AuthScreen() {
-  const [mode, setMode] = useState<Mode>('signin');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [magicSubmitting, setMagicSubmitting] = useState(false);
-  const [googleSubmitting, setGoogleSubmitting] = useState(false);
-  const [sent, setSent] = useState<Sent>(null);
-
-  const busy = submitting || magicSubmitting || googleSubmitting;
-
-  async function handleGoogle() {
-    if (busy) return;
-    setError(null);
-    setGoogleSubmitting(true);
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setError('Sign-in is not configured yet (missing Supabase keys in the deployment).');
-      setSubmitting(false);
-      setMagicSubmitting(false);
-      setGoogleSubmitting(false);
-      return;
-    }
-    try {
-      const { error: err } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin },
-      });
-      // On success the browser navigates away to Google; only reset on error.
-      if (err) {
-        setError(humanError(err.message));
-        setGoogleSubmitting(false);
-      }
-    } catch {
-      setError('Could not start Google sign-in. Please try again.');
-      setGoogleSubmitting(false);
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (busy) return;
-    setError(null);
-    if (!email.trim() || !password) {
-      setError('Enter your email and password to continue.');
-      return;
-    }
-    setSubmitting(true);
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setError('Sign-in is not configured yet (missing Supabase keys in the deployment).');
-      setSubmitting(false);
-      setMagicSubmitting(false);
-      setGoogleSubmitting(false);
-      return;
-    }
-    try {
-      if (mode === 'signin') {
-        const { error: err } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (err) setError(humanError(err.message));
-        // On success, AuthProvider's onAuthStateChange swaps in the app.
-      } else {
-        const { data, error: err } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
-        if (err) {
-          setError(humanError(err.message));
-        } else if (!data.session && data.user && (data.user.identities?.length ?? 0) > 0) {
-          // Email confirmation required before a session is issued.
-          setSent({ kind: 'confirm', email: email.trim() });
-        } else if (!data.session && data.user && data.user.identities?.length === 0) {
-          setError('An account with this email already exists. Try signing in instead.');
-        }
-      }
-    } catch {
-      setError('Something went wrong reaching the sign-in service. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleMagicLink() {
-    if (busy) return;
-    setError(null);
-    if (!email.trim()) {
-      setError('Enter your email above first, then we can send you a magic link.');
-      return;
-    }
-    setMagicSubmitting(true);
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setError('Sign-in is not configured yet (missing Supabase keys in the deployment).');
-      setSubmitting(false);
-      setMagicSubmitting(false);
-      setGoogleSubmitting(false);
-      return;
-    }
-    try {
-      const { error: err } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: window.location.origin },
-      });
-      if (err) setError(humanError(err.message));
-      else setSent({ kind: 'magic', email: email.trim() });
-    } catch {
-      setError('Something went wrong sending the link. Please try again.');
-    } finally {
-      setMagicSubmitting(false);
-    }
-  }
-
-  const inputClass =
-    'w-full rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm text-gray-100 placeholder-gray-500 outline-none transition focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/30';
-
+/**
+ * Shared dark radial-glow backdrop + Tambourine brand header, reused by the
+ * /sign-in and /sign-up routes so all auth surfaces look identical.
+ */
+export function AuthBackdrop({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="flex min-h-screen items-center justify-center px-4 py-12"
@@ -181,7 +22,6 @@ export default function AuthScreen() {
       }}
     >
       <div className="w-full max-w-[400px]">
-        {/* Brand */}
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-900/50">
@@ -191,168 +31,43 @@ export default function AuthScreen() {
           </div>
           <p className="mt-3 text-sm text-gray-400">Find your fastest-growing TAM.</p>
         </div>
-
-        <div className="rounded-2xl border border-white/10 bg-[#101218] p-6 shadow-2xl shadow-black/50">
-          {sent ? (
-            <div className="py-4 text-center">
-              <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/30">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M3 7l9 6 9-6M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-              <h2 className="text-base font-semibold text-white">
-                {sent.kind === 'magic' ? 'Check your email' : 'Confirm your account'}
-              </h2>
-              <p className="mt-2 text-sm leading-relaxed text-gray-400">
-                {sent.kind === 'magic'
-                  ? 'We sent you a sign-in link. Open it on this device and you’ll be signed in automatically.'
-                  : 'Check your email to confirm your account, then come back here to sign in.'}
-              </p>
-              <p className="mt-2 text-sm font-medium text-indigo-300">{sent.email}</p>
-              <button
-                type="button"
-                onClick={() => setSent(null)}
-                className="mt-5 text-xs font-medium text-gray-500 transition hover:text-gray-300"
-              >
-                ← Back to sign in
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Mode toggle */}
-              <div className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-white/[0.04] p-1 ring-1 ring-white/5">
-                {(
-                  [
-                    ['signin', 'Sign in'],
-                    ['signup', 'Create account'],
-                  ] as [Mode, string][]
-                ).map(([m, label]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => {
-                      setMode(m);
-                      setError(null);
-                    }}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                      mode === m
-                        ? 'bg-indigo-500/20 text-white ring-1 ring-inset ring-indigo-500/40'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="auth-email"
-                    className="mb-1.5 block text-xs font-medium text-gray-400"
-                  >
-                    Email
-                  </label>
-                  <input
-                    id="auth-email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="auth-password"
-                    className="mb-1.5 block text-xs font-medium text-gray-400"
-                  >
-                    Password
-                  </label>
-                  <input
-                    id="auth-password"
-                    type="password"
-                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
-                    className={inputClass}
-                  />
-                </div>
-
-                {error && (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-red-500/25 bg-red-500/10 px-3.5 py-2.5 text-[13px] leading-relaxed text-red-300"
-                  >
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#7c6ef5] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-[#8b7cf7] disabled:opacity-60"
-                >
-                  {submitting && <Spinner />}
-                  {mode === 'signin' ? 'Sign in' : 'Create account'}
-                </button>
-              </form>
-
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-white/10" />
-                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                  or
-                </span>
-                <div className="h-px flex-1 bg-white/10" />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleGoogle}
-                disabled={busy}
-                className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-gray-200 transition hover:border-indigo-500/40 hover:bg-white/[0.06] disabled:opacity-60"
-              >
-                {googleSubmitting ? (
-                  <Spinner />
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                )}
-                Continue with Google
-              </button>
-
-              <button
-                type="button"
-                onClick={handleMagicLink}
-                disabled={busy}
-                className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-gray-200 transition hover:border-indigo-500/40 hover:bg-white/[0.06] disabled:opacity-60"
-              >
-                {magicSubmitting && <Spinner />}
-                Email me a magic link
-              </button>
-            </>
-          )}
-        </div>
-
-        <p className="mt-6 text-center text-[11px] text-gray-600">
-          By continuing you agree to the Tambourine terms.
-        </p>
+        {children}
       </div>
     </div>
+  );
+}
+
+export default function AuthScreen() {
+  return (
+    <AuthBackdrop>
+      <div className="rounded-2xl border border-white/10 bg-[#101218] p-6 text-center shadow-2xl shadow-black/50">
+        <p className="text-sm leading-relaxed text-gray-300">
+          Growth intelligence on 60,000+ ecommerce brands.
+        </p>
+        <div className="mt-5 space-y-2.5">
+          <Link
+            href="/sign-up"
+            className="flex w-full items-center justify-center rounded-lg bg-[#7c6ef5] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition hover:bg-[#8b7cf7]"
+          >
+            Create free account
+          </Link>
+          <Link
+            href="/sign-in"
+            className="flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-gray-200 transition hover:border-indigo-500/40 hover:bg-white/[0.06]"
+          >
+            Sign in
+          </Link>
+        </div>
+        <Link
+          href="/lookup"
+          className="mt-5 inline-block text-xs font-medium text-gray-500 transition hover:text-gray-300"
+        >
+          Or try a free brand lookup first →
+        </Link>
+      </div>
+      <p className="mt-6 text-center text-[11px] text-gray-600">
+        By continuing you agree to the Tambourine terms.
+      </p>
+    </AuthBackdrop>
   );
 }

@@ -1,78 +1,67 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createContext, useContext, useMemo } from 'react';
+import { useClerk, useUser } from '@clerk/nextjs';
+
+// Minimal user shape consumed across the app (usePersona, TamListBuilder,
+// MyAccountsView, SettingsView, sidebar footer) — only .id and .email are used.
+export interface AuthUser {
+  id: string;
+  email: string;
+}
 
 interface AuthContextValue {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
-  /** False when NEXT_PUBLIC_SUPABASE_ANON_KEY isn't configured — the app runs without login. */
+  /** False when NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY isn't configured — the app runs without login. */
   authEnabled: boolean;
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue>({
+// Evaluated at build time (NEXT_PUBLIC_ envs are inlined). When the key is
+// absent the app must run exactly as before auth existed: no login wall,
+// no Clerk hooks, no crash.
+const AUTH_ENABLED = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+const DISABLED_VALUE: AuthContextValue = {
   user: null,
-  loading: true,
-  authEnabled: true,
+  loading: false,
+  authEnabled: false,
   signOut: async () => {},
-});
+};
+
+const AuthContext = createContext<AuthContextValue>(DISABLED_VALUE);
+
+// Clerk hooks may only be called under <ClerkProvider>, which layout.tsx only
+// mounts when the publishable key is set — so this inner component is only
+// rendered in that case.
+function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
+  const { user: clerkUser, isLoaded } = useUser();
+  const clerk = useClerk();
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user: clerkUser
+        ? { id: clerkUser.id, email: clerkUser.primaryEmailAddress?.emailAddress ?? '' }
+        : null,
+      loading: !isLoaded,
+      authEnabled: true,
+      signOut: async () => {
+        await clerk.signOut();
+      },
+    }),
+    [clerkUser, isLoaded, clerk],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [authEnabled, setAuthEnabled] = useState(true);
-
-  useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      // Auth env vars not configured — never block the app.
-      setAuthEnabled(false);
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (cancelled) return;
-        setUser(data.session?.user ?? null);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setUser(null);
-        setLoading(false);
-      });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (cancelled) return;
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const signOut = async () => {
-    const supabase = getSupabaseBrowserClient();
-    if (supabase) await supabase.auth.signOut();
-    setUser(null);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, loading, authEnabled, signOut }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  if (!AUTH_ENABLED) {
+    // Auth env vars not configured — never block the app.
+    return <AuthContext.Provider value={DISABLED_VALUE}>{children}</AuthContext.Provider>;
+  }
+  return <ClerkAuthBridge>{children}</ClerkAuthBridge>;
 }
 
 export function useAuth(): AuthContextValue {

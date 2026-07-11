@@ -27,7 +27,7 @@ import {
 import CommandHome from '@/app/components/CommandHome';
 import AuthScreen from '@/app/components/AuthScreen';
 import { useAuth } from '@/app/components/AuthProvider';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useClerk } from '@clerk/nextjs';
 import TamListBuilder from '@/app/components/TamListBuilder';
 import EmptyState from '@/app/components/EmptyState';
 import { buildResearchBrief, type ResearchBriefInput } from '@/lib/researchBrief';
@@ -1223,27 +1223,25 @@ function AuthLoader() {
   );
 }
 
-// Settings — minimal real account surface (email, password reset, sign out)
+// Opens Clerk's hosted user-profile modal. Rendered only when authEnabled —
+// useClerk() may only be called under ClerkProvider.
+function ManageAccountButton() {
+  const clerk = useClerk();
+  return (
+    <button
+      onClick={() => clerk.openUserProfile()}
+      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+    >
+      Manage account
+    </button>
+  );
+}
+
+// Settings — minimal real account surface (email, manage account, sign out)
 // plus the placeholder copy for workspace settings.
 function SettingsView() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, authEnabled } = useAuth();
   const [persona, setPersona] = usePersona();
-  const [resetState, setResetState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-
-  async function sendReset() {
-    if (!user?.email || resetState === 'sending') return;
-    setResetState('sending');
-    try {
-      const sb = getSupabaseBrowserClient();
-      if (!sb) return;
-      const { error } = await sb.auth.resetPasswordForEmail(user.email, {
-        redirectTo: window.location.origin,
-      });
-      setResetState(error ? 'error' : 'sent');
-    } catch {
-      setResetState('error');
-    }
-  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -1256,31 +1254,25 @@ function SettingsView() {
             </span>
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-gray-900">{user?.email ?? '—'}</div>
-              <div className="text-[11px] text-gray-500">Signed in with Supabase Auth</div>
+              <div className="text-[11px] text-gray-500">
+                {authEnabled ? 'Signed in with Clerk' : 'Authentication not configured'}
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
-            <button
-              onClick={sendReset}
-              disabled={resetState === 'sending'}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              {resetState === 'sending' ? 'Sending…' : 'Send password reset email'}
-            </button>
-            <button
-              onClick={() => signOut()}
-              className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/20"
-            >
-              Sign out
-            </button>
-            {resetState === 'sent' && (
-              <span className="text-xs font-medium text-green-600">
-                Reset link sent to {user?.email}.
-              </span>
-            )}
-            {resetState === 'error' && (
-              <span className="text-xs font-medium text-red-500">
-                Couldn’t send the reset email — try again in a minute.
+            {authEnabled ? (
+              <>
+                <ManageAccountButton />
+                <button
+                  onClick={() => signOut()}
+                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/20"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <span className="text-xs text-gray-500">
+                Authentication not configured — the app is running without login.
               </span>
             )}
           </div>
