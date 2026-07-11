@@ -199,12 +199,12 @@ export default function TopMoversCarousel() {
               <Favicon domain={c.domain} name={c.name} />
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-white">{c.name}</div>
-                <div className="truncate text-[11px] text-gray-500">{c.category ?? 'DTC'}</div>
+                <div className="truncate text-[11px] text-gray-400">{c.category ?? 'DTC'}</div>
               </div>
             </div>
             <div className="mt-4 flex items-end justify-between">
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-gray-500">Growth Score</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400">Growth Score</div>
                 <div className="text-2xl font-bold tabular-nums text-[#a99cff]">{c.score}</div>
                 {c.delta7d != null && (
                   <div className={`text-[11px] font-semibold ${c.delta7d >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>

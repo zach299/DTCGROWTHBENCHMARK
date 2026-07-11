@@ -59,7 +59,12 @@ export default function SpendEstimateBadge({
   compact?: boolean;
 }) {
   if (!estimate) {
-    return <span className="text-sm text-gray-500">—</span>;
+    // Thin-data state: say why the cell is empty instead of a bare dash.
+    return compact ? (
+      <span className="text-[12px] text-gray-500" title="No spend estimate yet — needs observed ad activity.">—</span>
+    ) : (
+      <span className="text-sm font-medium text-gray-400">No data yet</span>
+    );
   }
   if (compact) {
     return (

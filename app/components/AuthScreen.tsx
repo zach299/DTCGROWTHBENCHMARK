@@ -60,12 +60,12 @@ export default function AuthScreen() {
         </div>
         <Link
           href="/lookup"
-          className="mt-5 inline-block text-xs font-medium text-gray-500 transition hover:text-gray-300"
+          className="mt-5 inline-block text-xs font-medium text-gray-400 transition hover:text-gray-200"
         >
           Or try a free brand lookup first →
         </Link>
       </div>
-      <p className="mt-6 text-center text-[11px] text-gray-600">
+      <p className="mt-6 text-center text-[11px] text-gray-500">
         By continuing you agree to the Tambourine terms.
       </p>
     </AuthBackdrop>

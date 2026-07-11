@@ -110,7 +110,7 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
       <div className="text-zinc-400 text-xs uppercase tracking-widest mb-1">{label}</div>
       <div className="text-2xl font-bold text-white">{value}</div>
-      {sub && <div className="text-zinc-500 text-xs mt-1">{sub}</div>}
+      {sub && <div className="text-zinc-400 text-xs mt-1">{sub}</div>}
     </div>
   );
 }
@@ -166,7 +166,7 @@ export default function AdminPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold">Tambourine — Admin</h1>
-            <p className="text-zinc-500 text-sm mt-1">Background refresh worker &amp; enrichment coverage</p>
+            <p className="text-zinc-400 text-sm mt-1">Background refresh worker &amp; enrichment coverage</p>
           </div>
           <div className="flex gap-3 items-center">
             <button
@@ -175,7 +175,7 @@ export default function AdminPage() {
             >
               Refresh
             </button>
-            <span className="text-zinc-500 text-xs">
+            <span className="text-zinc-400 text-xs">
               Enrichment runs daily via GitHub Actions (“Enrich Top 50k Brands”) — trigger extra runs from the Actions tab.
             </span>
           </div>
@@ -196,7 +196,7 @@ export default function AdminPage() {
         ) : stats ? (
           <>
             <section className="mb-8">
-              <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Overall Coverage</h2>
+              <h2 className="text-xs uppercase tracking-widest text-zinc-400 mb-3">Overall Coverage</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Stat label="Total Brands" value={fmt(stats.total_brands)} sub="Shopify in master_database" />
                 <Stat
@@ -219,7 +219,7 @@ export default function AdminPage() {
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Top 25k Priority Brands</h2>
+              <h2 className="text-xs uppercase tracking-widest text-zinc-400 mb-3">Top 25k Priority Brands</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Stat label="In Cohort" value={fmt(stats.top_25k.total)} />
                 <Stat
@@ -242,7 +242,7 @@ export default function AdminPage() {
             </section>
 
             <section className="mb-8">
-              <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Throughput</h2>
+              <h2 className="text-xs uppercase tracking-widest text-zinc-400 mb-3">Throughput</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Stat label="Last 24h" value={fmt(stats.throughput.last_24h)} sub="domains enriched" />
                 <Stat label="Last Hour" value={fmt(stats.throughput.last_hour)} sub="domains enriched" />
@@ -269,7 +269,7 @@ export default function AdminPage() {
 
             {stats.snapshots && (
               <section className="mb-8">
-                <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Trend Readiness</h2>
+                <h2 className="text-xs uppercase tracking-widest text-zinc-400 mb-3">Trend Readiness</h2>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                   <Stat label="0 Snapshots" value={fmt(stats.snapshots.brands_zero_snapshots)} sub="not started" />
                   <Stat label="1 Snapshot" value={fmt(stats.snapshots.brands_one_snapshot)} sub="tracking started" />
@@ -305,7 +305,7 @@ export default function AdminPage() {
                 return (
                   <section className="mb-8">
                     <div className="flex items-center gap-3 mb-3">
-                      <h2 className="text-xs uppercase tracking-widest text-zinc-500">Last Nightly Run</h2>
+                      <h2 className="text-xs uppercase tracking-widest text-zinc-400">Last Nightly Run</h2>
                       <span className={`text-[11px] font-semibold border rounded-full px-2.5 py-0.5 ${badge.cls}`}>
                         {badge.text}
                       </span>
@@ -332,7 +332,7 @@ export default function AdminPage() {
                         }
                       />
                     </div>
-                    <div className="text-zinc-500 text-xs mt-3">
+                    <div className="text-zinc-400 text-xs mt-3">
                       {stats.cadence && <span>Cadence: {stats.cadence}</span>}
                       {raw && <span>{stats.cadence ? ' · ' : ''}{raw}</span>}
                     </div>
@@ -340,7 +340,7 @@ export default function AdminPage() {
                 );
               })()}
 
-            <div className="text-zinc-600 text-xs text-right">
+            <div className="text-zinc-500 text-xs text-right">
               Last updated {new Date(stats.generated_at).toLocaleTimeString()} · auto-refreshes every 30s
             </div>
           </>

@@ -76,7 +76,7 @@ function AnalyzeLoader() {
       </svg>
       <div className="text-center" role="status" aria-live="polite">
         <div className="text-sm font-semibold text-gray-200">{LOADING_MESSAGES[step]}…</div>
-        <p className="mt-1.5 text-xs text-gray-500">First scan of a company can take ~30 seconds.</p>
+        <p className="mt-1.5 text-xs text-gray-400">First scan of a company can take ~30 seconds.</p>
       </div>
     </div>
   );
@@ -152,7 +152,7 @@ function UntrackedPanel({ domain }: { domain: string }) {
           placeholder="you@company.com"
           aria-label="Email for the report"
           autoComplete="email"
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#101218] px-4 py-2.5 text-sm text-gray-100 outline-none placeholder:text-gray-600 focus:border-indigo-500/60"
+          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#101218] px-4 py-2.5 text-sm text-gray-100 outline-none placeholder:text-gray-500 focus:border-indigo-500/60"
         />
         <button
           type="submit"
@@ -241,7 +241,7 @@ function MiniFooter() {
           </span>
           <span className="text-sm font-semibold text-gray-200">Tambourine</span>
         </span>
-        <span className="text-[12px] text-gray-600">© {new Date().getFullYear()} Tambourine Growth</span>
+        <span className="text-[12px] text-gray-500">© {new Date().getFullYear()} Tambourine Growth</span>
       </div>
     </footer>
   );
@@ -500,7 +500,7 @@ export default function LeadMagnet({ initialQuery }: { initialQuery?: string }) 
               autoCorrect="off"
               spellCheck={false}
               aria-label="Company name or website"
-              className="min-w-0 flex-1 bg-transparent py-2 text-[15px] text-gray-100 outline-none placeholder:text-gray-600"
+              className="min-w-0 flex-1 bg-transparent py-2 text-[15px] text-gray-100 outline-none placeholder:text-gray-500"
             />
             <button
               type="submit"
@@ -518,7 +518,7 @@ export default function LeadMagnet({ initialQuery }: { initialQuery?: string }) 
           )}
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <span className="text-[11px] text-gray-600">Try:</span>
+            <span className="text-[11px] text-gray-500">Try:</span>
             {EXAMPLES.map((d) => (
               <button
                 key={d}

@@ -56,9 +56,9 @@ body {
   --d-panel: #101218;     /* cards / panels */
   --d-panel-2: #171a24;   /* hover / nested */
   --d-line: #1e2130;      /* borders */
-  --d-ink: #e6e9ef;       /* primary text */
-  --d-muted: #8b93a7;     /* secondary text */
-  --d-faint: #5b6373;     /* tertiary text */
+  --d-ink: #e6e9ef;       /* primary text (≈15:1 on --d-bg) */
+  --d-muted: #99a1b3;     /* secondary text (≈6.6:1 on --d-bg, ≈5.9:1 on --d-panel) */
+  --d-faint: #7e869b;     /* tertiary text (≈4.6:1 on --d-bg — placeholders/decoration only) */
   background: var(--d-bg);
   color: var(--d-ink);
 }
@@ -81,9 +81,10 @@ body {
 .dark-app .text-gray-900,
 .dark-app .text-gray-800 { color: var(--d-ink); }
 .dark-app .text-gray-700,
-.dark-app .text-gray-600 { color: #b7bdca; }
+.dark-app .text-gray-600 { color: #bdc3d0; }
 .dark-app .text-gray-500,
 .dark-app .text-gray-400 { color: var(--d-muted); }
+/* Tailwind's gray-300 (#d1d5db) already clears AA on all dark surfaces. */
 
 /* Inputs */
 .dark-app input,

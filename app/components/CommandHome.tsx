@@ -513,7 +513,7 @@ export default function CommandHome({
                   <tr
                     key={m.domain}
                     onClick={() => onSelectDomain(m.domain)}
-                    className="cursor-pointer border-b border-white/5 text-[13px] transition-colors last:border-0 hover:bg-white/[0.03]"
+                    className="cursor-pointer border-b border-white/5 text-[13px] transition-colors last:border-0 hover:bg-white/[0.05]"
                   >
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2.5">
@@ -596,7 +596,7 @@ export default function CommandHome({
                   <li key={l.name} className="border-b border-white/5 last:border-0">
                     <button
                       onClick={onOpenWatchlist}
-                      className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-white/[0.03]"
+                      className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-white/[0.05]"
                     >
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-300">
                         <DocIcon width={14} height={14} />

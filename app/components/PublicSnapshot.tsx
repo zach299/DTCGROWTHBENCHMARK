@@ -306,7 +306,7 @@ function BrandHeader({
     <div className="flex flex-wrap items-center gap-4">
       <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#f4f5f7] shadow-lg ring-1 ring-white/10">
         {imgErr ? (
-          <span className="text-lg font-bold uppercase text-gray-600">{name.slice(0, 2)}</span>
+          <span className="text-lg font-bold uppercase" style={{ color: '#4b5563' }}>{name.slice(0, 2)}</span>
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img

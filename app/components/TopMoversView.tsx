@@ -219,8 +219,8 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
             onClick={() => setSort(s.key)}
             className={`inline-flex h-8 items-center rounded-lg px-3 font-medium transition-colors ${
               sort === s.key
-                ? 'bg-indigo-600 text-white'
-                : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                ? 'bg-indigo-600 text-white ring-1 ring-inset ring-indigo-400/60'
+                : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900'
             }`}
           >
             {s.label}
@@ -313,7 +313,7 @@ export default function TopMoversView({ onSelect }: { onSelect: (d: string) => v
                   <tr
                     key={m.domain}
                     onClick={() => onSelect(m.domain)}
-                    className="group h-[46px] cursor-pointer border-b border-white/5 text-[13px] transition-colors last:border-0 hover:bg-white/[0.03]"
+                    className="group h-[46px] cursor-pointer border-b border-white/5 text-[13px] transition-colors last:border-0 hover:bg-white/[0.05]"
                   >
                     <td className="px-4 py-2 font-bold tabular-nums text-gray-400">
                       #{m.rank}

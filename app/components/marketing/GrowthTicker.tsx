@@ -94,9 +94,9 @@ function TickerItem({ e, tick, idx }: { e: TickerEntry; tick: number; idx: numbe
           )}
         </div>
         <div className="mt-0.5 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-gray-500">Growth Score</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-400">Growth Score</span>
           <span className="text-[13px] font-semibold tabular-nums text-[#a99cff]">{score}</span>
-          <span className="hidden max-w-[150px] truncate text-[11px] text-gray-500 sm:block">{e.signal}</span>
+          <span className="hidden max-w-[150px] truncate text-[11px] text-gray-400 sm:block">{e.signal}</span>
         </div>
       </div>
       <Sparkline values={e.spark} up={up} />
@@ -231,7 +231,7 @@ export default function GrowthTicker({
     <section aria-label="Growth ticker" className="w-full">
       <div className="mx-auto mb-4 flex max-w-6xl items-center justify-between px-6">
         <h2 className="text-sm font-semibold tracking-wide text-gray-300">{title}</h2>
-        <span className="flex items-center gap-2 text-[11px] text-gray-500">
+        <span className="flex items-center gap-2 text-[11px] text-gray-400">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />

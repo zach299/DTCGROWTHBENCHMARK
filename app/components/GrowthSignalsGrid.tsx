@@ -44,7 +44,7 @@ export default function GrowthSignalsGrid({ categories }: { categories: SignalCa
         ) : (
           <div
             key={cat.key}
-            className="rounded-2xl border border-dashed border-gray-200/70 bg-white/50 p-4 opacity-70"
+            className="rounded-2xl border border-dashed border-gray-200/70 bg-white/50 p-4 opacity-80"
           >
             <div className="flex items-center justify-between gap-2">
               <h4 className="text-sm font-semibold text-gray-500">{cat.label}</h4>

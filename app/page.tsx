@@ -7,8 +7,8 @@ import {
   SearchIcon,
   UploadIcon,
   StarIcon,
-  BellIcon,
   BuildingIcon,
+  ChevronDownIcon,
   ChevronUpDownIcon,
   ExternalLinkIcon,
   InfoIcon,
@@ -43,7 +43,7 @@ import MyAccountsView from '@/app/components/MyAccountsView';
 import AlertsView from '@/app/components/AlertsView';
 import GrowthSignalsGrid from '@/app/components/GrowthSignalsGrid';
 import { buildSignalCategories } from '@/lib/signals';
-import { PERSONAS, buildPersonaTakeaways } from '@/lib/persona';
+import { PERSONAS, buildPersonaReason, buildPersonaTakeaways } from '@/lib/persona';
 import { usePersona } from '@/app/components/usePersona';
 import type { ReasonInputs } from '@/lib/reason';
 
@@ -251,17 +251,6 @@ function diversity(n: number): string {
   if (n >= 3) return 'Medium';
   if (n >= 1) return 'Low';
   return 'None';
-}
-function estSpend(salesYear: number): string {
-  // Rough heuristic: ~12% of revenue on paid media, monthly.
-  const monthly = (salesYear * 0.12) / 12;
-  if (monthly <= 0) return '—';
-  if (monthly < 10_000) return '< $10K';
-  if (monthly < 50_000) return '$10K – $50K';
-  if (monthly < 250_000) return '$50K – $250K';
-  if (monthly < 1_000_000) return '$250K – $1M';
-  if (monthly < 5_000_000) return '$1M – $5M';
-  return '$5M+';
 }
 function paidStatusBadge(status: string): string {
   if (status === 'active') return 'bg-green-100 text-green-700';
@@ -515,7 +504,6 @@ const NAV: { label: string; view: View; icon: React.ComponentType<React.SVGProps
   { label: 'Top Movers', view: 'movers', icon: TrendUpIcon },
   { label: 'Search Accounts', view: 'search', icon: SearchIcon },
   { label: 'Watchlist', view: 'watchlist', icon: StarIcon },
-  { label: 'Alerts', view: 'alerts', icon: BellIcon },
   { label: 'Imports', view: 'import', icon: UploadIcon },
   { label: 'Settings', view: 'settings', icon: SettingsIcon },
 ];
@@ -1643,6 +1631,25 @@ function AppShell() {
   // via usePersona(), so Settings and every open view stay in sync.
   const [persona, setPersona] = usePersona();
 
+  // Growth Signals grid collapse — persisted per browser; default expanded.
+  const [signalsCollapsed, setSignalsCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setSignalsCollapsed(localStorage.getItem('tam_signals_collapsed') === '1');
+    } catch {
+      /* default expanded */
+    }
+  }, []);
+  const toggleSignals = () =>
+    setSignalsCollapsed((c) => {
+      try {
+        localStorage.setItem('tam_signals_collapsed', c ? '0' : '1');
+      } catch {
+        /* noop */
+      }
+      return !c;
+    });
+
   const reasonInputs: ReasonInputs | null = result
     ? {
         metaAds: metaCount,
@@ -1684,7 +1691,7 @@ function AppShell() {
                 onClick={() => setView(item.view)}
                 className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                   active
-                    ? 'bg-indigo-500/15 font-medium text-white ring-1 ring-inset ring-indigo-500/30'
+                    ? 'bg-indigo-500/25 font-semibold text-white ring-1 ring-inset ring-indigo-400/50'
                     : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
                 }`}
               >
@@ -1965,6 +1972,17 @@ function AppShell() {
                 </div>
               </div>
 
+              {/* Persona verdict — the one-sentence answer for the active
+                  seller lens, visible above the fold with score + momentum. */}
+              {reasonInputs && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-indigo-500/25 bg-indigo-500/[0.08] px-4 py-3">
+                  <SparkleIcon width={14} height={14} className="mt-0.5 shrink-0 text-indigo-300" />
+                  <p className="text-[14px] font-medium leading-snug text-gray-200">
+                    {buildPersonaReason(persona, reasonInputs)}
+                  </p>
+                </div>
+              )}
+
               {/* Metric row — score first, signals second */}
               <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm sm:grid-cols-3 xl:grid-cols-5 divide-x divide-y divide-gray-100 xl:divide-y-0">
                 <MetricCard
@@ -2030,9 +2048,13 @@ function AppShell() {
                     ) : undefined
                   }
                 >
-                  <div className="text-xl font-semibold text-gray-900 tabular-nums">
-                    {result.revenue_range ?? formatMoney(sales)}
-                  </div>
+                  {result.revenue_range || sales > 0 ? (
+                    <div className="text-xl font-semibold text-gray-900 tabular-nums">
+                      {result.revenue_range ?? formatMoney(sales)}
+                    </div>
+                  ) : (
+                    <div className="text-sm font-medium text-gray-400">No data yet</div>
+                  )}
                 </MetricCard>
                 <MetricCard
                   label="Growth Investment"
@@ -2093,14 +2115,31 @@ function AppShell() {
 
               {/* Growth Signals — the composite categories behind the score */}
               <section id="growth-signals" className="scroll-mt-20">
-                <div className="mb-3">
-                  <h2 className="text-sm font-semibold text-gray-900">Growth Signals</h2>
-                  <p className="mt-0.5 text-[12px] text-gray-500">
-                    What&rsquo;s driving this score — new signal sources activate automatically as
-                    they come online.
-                  </p>
-                </div>
-                <GrowthSignalsGrid categories={signalCategories} />
+                <button
+                  type="button"
+                  onClick={toggleSignals}
+                  aria-expanded={!signalsCollapsed}
+                  className="mb-3 flex w-full items-start justify-between gap-3 text-left"
+                >
+                  <div>
+                    <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                      Growth Signals
+                      <ChevronDownIcon
+                        width={13}
+                        height={13}
+                        className={`text-gray-400 transition-transform ${signalsCollapsed ? '-rotate-90' : ''}`}
+                      />
+                    </h2>
+                    <p className="mt-0.5 text-[12px] text-gray-500">
+                      What&rsquo;s driving this score — new signal sources activate automatically as
+                      they come online.
+                    </p>
+                  </div>
+                  <span className="shrink-0 pt-0.5 text-[11px] font-medium text-gray-400">
+                    {signalsCollapsed ? `Show ${signalCategories.length} categories` : 'Hide'}
+                  </span>
+                </button>
+                {!signalsCollapsed && <GrowthSignalsGrid categories={signalCategories} />}
               </section>
 
 
@@ -2660,12 +2699,7 @@ function AppShell() {
                           </dd>
                         </div>
                       )}
-                      <div className="flex justify-between">
-                        <dt className="text-gray-500">Est. Revenue</dt>
-                        <dd className="text-gray-900 font-medium">
-                          {result.revenue_range ?? formatMoney(sales)}
-                        </dd>
-                      </div>
+                      {/* Est. Revenue row removed — duplicated the metric strip verbatim. */}
                       {followers > 0 && (
                         <div className="flex justify-between">
                           <dt className="text-gray-500">Social Followers</dt>
@@ -2694,17 +2728,8 @@ function AppShell() {
                     </Card>
                   )}
 
-                  {/* Estimated Growth Investment */}
-                  {(result.spend_band || sales > 0) && (
-                    <Card title="Est. Growth Investment">
-                      <div className="text-2xl font-bold text-gray-900">
-                        {result.spend_band ?? `${estSpend(sales)}/mo`}
-                      </div>
-                      <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                        Directional band modeled from live ad volume and growth investment intensity — not an exact figure.
-                      </p>
-                    </Card>
-                  )}
+                  {/* Est. Growth Investment card removed — the metric strip's
+                      "Growth Investment" cell already shows the modeled band. */}
 
                   {/* Tech Stack */}
                   {result.tech_stack && result.tech_stack.length > 0 && (

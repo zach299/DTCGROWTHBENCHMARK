@@ -75,7 +75,7 @@ export function AISearchBar() {
           aria-label="Search companies and growth signals"
           className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
         />
-        <span className="hidden items-center gap-1 text-gray-600 sm:flex" aria-hidden="true">
+        <span className="hidden items-center gap-1 text-gray-500 sm:flex" aria-hidden="true">
           <PaperclipIcon width={16} height={16} />
           <MicIcon width={16} height={16} />
         </span>
@@ -133,7 +133,7 @@ export function StatStrip() {
         {stats.map(([n, label]) => (
           <div key={label} className="text-center">
             <span className="text-sm font-semibold tabular-nums text-gray-200">{n}</span>
-            <span className="ml-1.5 text-[12px] text-gray-500">{label}</span>
+            <span className="ml-1.5 text-[12px] text-gray-400">{label}</span>
           </div>
         ))}
       </div>
@@ -150,7 +150,7 @@ export function SignalCoverage() {
   return (
     <section id="signals" aria-label="Signal coverage" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6">
       <div className="mb-8">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-500">Data coverage</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">Data coverage</div>
         <h2 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
           Six signal families, one growth score.
         </h2>
@@ -165,10 +165,10 @@ export function SignalCoverage() {
               </span>
               <div>
                 <div className="flex items-center gap-2.5">
-                  <span className="font-mono text-[10px] tabular-nums text-gray-600">0{i + 1}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-gray-500">0{i + 1}</span>
                   <h3 className="text-sm font-semibold text-gray-100">{c.name}</h3>
                 </div>
-                <p className="mt-1 text-[13px] leading-relaxed text-gray-500">{c.blurb}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-gray-400">{c.blurb}</p>
               </div>
             </div>
           );
@@ -185,7 +185,7 @@ export function UseCases() {
   return (
     <section id="use-cases" aria-label="Use cases" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6">
       <div className="mb-8">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-500">Who it&apos;s for</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400">Who it&apos;s for</div>
         <h2 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
           Built for teams that sell into growth.
         </h2>
@@ -265,13 +265,13 @@ export function Footer() {
               key={l.label}
               href={l.href}
               title={l.comingSoon ? 'Coming soon' : undefined}
-              className="text-[12px] text-gray-500 transition-colors hover:text-gray-300"
+              className="text-[12px] text-gray-400 transition-colors hover:text-gray-200"
             >
               {l.label}
             </a>
           ))}
         </nav>
-        <span className="text-[12px] text-gray-600">
+        <span className="text-[12px] text-gray-500">
           © {new Date().getFullYear()} Tambourine Growth
         </span>
       </div>

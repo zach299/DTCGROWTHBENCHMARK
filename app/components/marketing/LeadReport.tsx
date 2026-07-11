@@ -99,7 +99,7 @@ const LOCKED_MODULES = [
 function LockedModule({ label }: { label: string }) {
   return (
     <div className="relative rounded-xl border border-white/[0.06] bg-[#101218] p-4">
-      <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">{label}</div>
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">{label}</div>
       <div className="tam-locked-blur space-y-2" aria-hidden="true">
         <div className="h-5 w-24 rounded bg-gray-500/40" />
         <div className="h-2.5 w-32 rounded bg-gray-500/25" />
@@ -181,7 +181,7 @@ function UnlockGate({
           placeholder="you@company.com"
           aria-label="Work email"
           autoComplete="email"
-          className="min-w-0 flex-[2] rounded-xl border border-white/10 bg-[#101218] px-4 py-2.5 text-sm text-gray-100 outline-none placeholder:text-gray-600 focus:border-indigo-500/60"
+          className="min-w-0 flex-[2] rounded-xl border border-white/10 bg-[#101218] px-4 py-2.5 text-sm text-gray-100 outline-none placeholder:text-gray-500 focus:border-indigo-500/60"
         />
         <input
           type="text"
@@ -190,7 +190,7 @@ function UnlockGate({
           placeholder="First name (optional)"
           aria-label="First name (optional)"
           autoComplete="given-name"
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#101218] px-4 py-2.5 text-sm text-gray-100 outline-none placeholder:text-gray-600 focus:border-indigo-500/60"
+          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#101218] px-4 py-2.5 text-sm text-gray-100 outline-none placeholder:text-gray-500 focus:border-indigo-500/60"
         />
         <button
           type="submit"
@@ -205,7 +205,7 @@ function UnlockGate({
           {error}
         </p>
       )}
-      <p className="mt-3 text-[11px] text-gray-600">No credit card. No demo call. Just the report.</p>
+      <p className="mt-3 text-[11px] text-gray-500">No credit card. No demo call. Just the report.</p>
     </div>
   );
 }
@@ -360,14 +360,14 @@ export default function LeadReport({
                 </span>
               )}
             </div>
-            <div className="mt-0.5 text-xs text-gray-500">{domain}</div>
+            <div className="mt-0.5 text-xs text-gray-400">{domain}</div>
           </div>
         </div>
 
         {/* Score line */}
         <div className="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Growth Score</div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Growth Score</div>
             <div className="mt-1 flex items-center gap-3">
               <span className="text-6xl font-bold tabular-nums text-[#a99cff]">{gScore}</span>
               <div className="flex flex-col gap-1.5">
@@ -397,9 +397,9 @@ export default function LeadReport({
           <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
             {freeSignals.map((t) => (
               <div key={t.label} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t.label}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">{t.label}</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-gray-100">{t.value}</div>
-                <div className="mt-0.5 text-[11px] text-gray-500">{t.sub}</div>
+                <div className="mt-0.5 text-[11px] text-gray-400">{t.sub}</div>
               </div>
             ))}
           </div>
@@ -414,7 +414,7 @@ export default function LeadReport({
           <UnlockedModules data={data} spendEst={spendEst} campaigns={campaigns} live={live} reason={reason} name={name} />
         ) : (
           <section className="mt-6" aria-label="Locked report modules">
-            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-500">
+            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">
               <LockIcon width={12} height={12} />
               In the full report
             </div>
@@ -507,10 +507,10 @@ function UnlockedModules({
                 <dl className="mt-3 space-y-1.5">
                   {cat.metrics.slice(0, 4).map((m) => (
                     <div key={m.label} className="flex items-baseline justify-between gap-3">
-                      <dt className="text-[12px] text-gray-500">{m.label}</dt>
+                      <dt className="text-[12px] text-gray-400">{m.label}</dt>
                       <dd
                         className={`text-[12px] font-semibold tabular-nums ${
-                          m.tone === 'positive' ? 'text-emerald-400' : m.tone === 'muted' ? 'text-gray-500' : 'text-gray-200'
+                          m.tone === 'positive' ? 'text-emerald-400' : m.tone === 'muted' ? 'text-gray-400' : 'text-gray-200'
                         }`}
                       >
                         {m.value}
@@ -519,7 +519,7 @@ function UnlockedModules({
                   ))}
                 </dl>
               ) : (
-                <p className="mt-2 text-[11px] leading-relaxed text-gray-500">{cat.blurb}</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-gray-400">{cat.blurb}</p>
               )}
             </div>
           ))}
