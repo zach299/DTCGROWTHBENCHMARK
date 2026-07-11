@@ -25,7 +25,7 @@ import {
   XIcon,
 } from '@/app/components/icons';
 import CommandHome from '@/app/components/CommandHome';
-import AuthScreen from '@/app/components/AuthScreen';
+import MarketingHome from '@/app/components/marketing/MarketingHome';
 import { useAuth } from '@/app/components/AuthProvider';
 import { useClerk } from '@clerk/nextjs';
 import TamListBuilder from '@/app/components/TamListBuilder';
@@ -1320,7 +1320,7 @@ export default function Home() {
   if (authLoading) return <AuthLoader />;
   // When auth env vars aren't configured, run the app without a login wall
   // rather than dead-ending the whole product.
-  if (authEnabled && !user) return <AuthScreen />;
+  if (authEnabled && !user) return <MarketingHome />;
   return <AppShell />;
 }
 

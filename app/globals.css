@@ -243,6 +243,63 @@ body {
   background: rgba(10, 11, 16, 0.35);
   border-radius: inherit;
 }
+/* =========================================================================
+   Marketing homepage (signed-out) — ticker loop, sparkline draw, reveals
+   ========================================================================= */
+/* Infinite ticker: the track holds two identical copies; translating by -50%
+   loops seamlessly. Transform-only, GPU-friendly. */
+.mk-ticker {
+  animation: mk-scroll 55s linear infinite;
+  will-change: transform;
+}
+.mk-ticker-reverse {
+  animation: mk-scroll-rev 55s linear infinite;
+  will-change: transform;
+}
+@keyframes mk-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes mk-scroll-rev {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+/* Sparkline draw-in */
+.mk-spark-draw {
+  stroke-dasharray: 120;
+  stroke-dashoffset: 120;
+  animation: mk-spark 1.4s ease-out forwards;
+}
+@keyframes mk-spark {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Section reveal */
+.mk-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.mk-reveal.mk-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-ticker,
+  .mk-ticker-reverse,
+  .mk-spark-draw {
+    animation: none;
+  }
+  .mk-spark-draw { stroke-dashoffset: 0; }
+  .mk-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Conversion wall panel — soft indigo→emerald gradient on the dark surface. */
 .tam-wall {
   background:
