@@ -44,3 +44,8 @@
 17. Lead-magnet full-report unlock = work-email capture (lookup_requests,
     source 'report_unlock') rather than forced signup; account creation is the
     subtle post-unlock CTA per spec.
+18. Alerts removed from sidebar nav only — AlertsView, MyAccounts alerts strip,
+    /api/alerts, and routing all intact/unreachable-by-nav per spec.
+19. Contrast standard: fixed at the .dark-app remap source — muted #99a1b3
+    (~6.6:1), faint #7e869b (placeholders only), gray-600/700 remap #bdc3d0.
+    gray-500 permitted only for placeholders/decoration/legalese.
