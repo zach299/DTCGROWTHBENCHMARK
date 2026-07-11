@@ -223,3 +223,31 @@ body {
   background-clip: text;
   color: transparent;
 }
+
+/* =========================================================================
+   PLG funnel — /lookup + /b/[domain] public pages
+   ========================================================================= */
+/* Locked/teaser content: blur placeholder bars (never real data) behind a
+   lock overlay. */
+.tam-locked-blur {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+}
+.tam-lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 11, 16, 0.35);
+  border-radius: inherit;
+}
+/* Conversion wall panel — soft indigo→emerald gradient on the dark surface. */
+.tam-wall {
+  background:
+    radial-gradient(480px 260px at 15% 0%, rgba(124, 110, 245, 0.22), transparent 70%),
+    radial-gradient(520px 300px at 90% 100%, rgba(61, 224, 160, 0.1), transparent 70%),
+    #101218;
+  border: 1px solid rgba(124, 110, 245, 0.3);
+}
