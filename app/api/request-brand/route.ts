@@ -13,6 +13,8 @@ export const maxDuration = 10;
 const bodySchema = z.object({
   email: z.string().email().max(254),
   domain: z.string().min(1).max(253),
+  first_name: z.string().max(80).optional(),
+  source: z.enum(['lookup_teaser', 'report_unlock']).optional(),
 });
 const VALID_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
     await supabase.from('lookup_requests').insert({
       email: parsed.data.email.trim().toLowerCase(),
       domain,
-      source: 'lookup_teaser',
+      source: parsed.data.source ?? 'lookup_teaser',
     });
     // Make the 24h promise real: register + prioritize for tonight's pull.
     await supabase
